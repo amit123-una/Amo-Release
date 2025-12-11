@@ -1,0 +1,11 @@
+{
+  "model_type": "auraflow",
+  "scheduler": "euler",
+  "c": 2.0,
+  "use_att": false,
+  "prompt_file": "prompts.txt",
+  "output_dir": "exps/flux",
+  "num_inference_steps": 28,
+  "seed": 10,
+  "img_size": 1024
+}
