@@ -6,7 +6,7 @@ import os
 import sys
 import traceback
 from typing import List, Tuple, Optional
-from PyQt6.QtCore import QObject, pyqtSignal, QThread
+from PyQt5.QtCore import QObject, pyqtSignal, QThread
 
 # Import the original run function logic
 # We'll import it from the parent directory's run.py

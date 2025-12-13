@@ -8,14 +8,14 @@ import subprocess
 import sys
 from pathlib import Path
 from typing import Optional, List
-from PyQt6.QtWidgets import (
+from PyQt5.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
     QLabel, QPushButton, QLineEdit, QSpinBox, QDoubleSpinBox,
     QCheckBox, QRadioButton, QButtonGroup, QTextEdit, QScrollArea,
     QGroupBox, QFileDialog, QMessageBox, QProgressBar, QSizePolicy
 )
-from PyQt6.QtCore import Qt, QSize, pyqtSlot
-from PyQt6.QtGui import QPixmap, QImage, QFont, QIcon
+from PyQt5.QtCore import Qt, QSize, pyqtSlot
+from PyQt5.QtGui import QPixmap, QImage, QFont, QIcon
 import logging
 
 from ui_app.core.generator import ImageGenerator, GenerationWorker
@@ -90,11 +90,11 @@ class ImagePreviewWidget(QWidget):
         layout = QVBoxLayout()
         layout.setContentsMargins(5, 5, 5, 5)
         layout.setSpacing(5)
-        layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+        layout.setAlignment(Qt.AlignTop)
         
         # Image label
         self.image_label = QLabel()
-        self.image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.image_label.setAlignment(Qt.AlignCenter)
         self.image_label.setMinimumSize(250, 250)
         self.image_label.setMaximumSize(350, 350)
         self.image_label.setScaledContents(True)
@@ -129,8 +129,8 @@ class ImagePreviewWidget(QWidget):
                 # Scale to fit
                 scaled = pixmap.scaled(
                     self.image_label.size(),
-                    Qt.AspectRatioMode.KeepAspectRatio,
-                    Qt.TransformationMode.SmoothTransformation
+                    Qt.KeepAspectRatio,
+                    Qt.SmoothTransformation
                 )
                 self.image_label.setPixmap(scaled)
             else:
@@ -231,7 +231,7 @@ class MainWindow(QMainWindow):
         layout = QVBoxLayout()
         layout.setSpacing(12)
         layout.setContentsMargins(10, 10, 10, 10)
-        layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+        layout.setAlignment(Qt.AlignTop)
         panel.setLayout(layout)
         
         # Model Type Group
@@ -365,11 +365,11 @@ class MainWindow(QMainWindow):
         button_layout.setSpacing(8)
         self.generate_btn = QPushButton("Generate Images")
         self.generate_btn.setStyleSheet("background-color: #4CAF50; color: white; font-weight: bold; padding: 10px; min-height: 35px;")
-        self.generate_btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self.generate_btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self.generate_btn.clicked.connect(self._start_generation)
         self.stop_btn = QPushButton("Stop")
         self.stop_btn.setStyleSheet("background-color: #f44336; color: white; padding: 10px; min-height: 35px;")
-        self.stop_btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self.stop_btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self.stop_btn.clicked.connect(self._stop_generation)
         self.stop_btn.setEnabled(False)
         button_layout.addWidget(self.generate_btn)
@@ -385,11 +385,11 @@ class MainWindow(QMainWindow):
         settings_layout = QHBoxLayout()
         settings_layout.setSpacing(8)
         save_settings_btn = QPushButton("Save Settings")
-        save_settings_btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        save_settings_btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         save_settings_btn.setMinimumHeight(30)
         save_settings_btn.clicked.connect(self._save_settings)
         load_settings_btn = QPushButton("Load Settings")
-        load_settings_btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        load_settings_btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         load_settings_btn.setMinimumHeight(30)
         load_settings_btn.clicked.connect(self._load_settings)
         settings_layout.addWidget(save_settings_btn)
@@ -401,7 +401,7 @@ class MainWindow(QMainWindow):
         
         # Set minimum size for panel
         panel.setMinimumWidth(360)
-        panel.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding)
+        panel.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Expanding)
         
         return panel
         
@@ -428,18 +428,18 @@ class MainWindow(QMainWindow):
         # Scroll area for image gallery
         scroll_area = QScrollArea()
         scroll_area.setWidgetResizable(True)
-        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         
         self.gallery_widget = QWidget()
         self.gallery_layout = QVBoxLayout()
-        self.gallery_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+        self.gallery_layout.setAlignment(Qt.AlignTop)
         self.gallery_widget.setLayout(self.gallery_layout)
         
         # Container for image grid (using flow layout approach)
         self.image_container = QWidget()
         self.image_grid = QGridLayout()
         self.image_grid.setSpacing(10)
-        self.image_grid.setAlignment(Qt.AlignmentFlag.AlignTop)
+        self.image_grid.setAlignment(Qt.AlignTop)
         self.image_container.setLayout(self.image_grid)
         
         self.gallery_layout.addWidget(self.image_container)
