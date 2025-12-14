@@ -47,14 +47,25 @@ class ImageGenerator(QObject):
                  exp_dir: str,
                  num_inference_steps: int,
                  seed: int,
-                 img_size: int):
+                 img_size: int,
+                 conda_exe: Optional[str] = None):
         """
         Generate images using the exact logic from run.py.
         
         Args match the original argparse arguments exactly.
+        conda_exe: Path to conda.exe if conda environment should be used
         """
         self._stop_requested = False
         
+        # If conda_exe is provided, use conda run to execute in the amo environment
+        if conda_exe and os.path.exists(conda_exe):
+            self.log_message.emit("Using conda environment 'amo' for generation", "info")
+            return self._generate_with_conda(
+                model_type, scheduler, c, use_att, prompt_file, exp_dir,
+                num_inference_steps, seed, img_size, conda_exe
+            )
+        
+        # Otherwise, use the existing direct generation method
         try:
             # Import torch and diffusers only when needed (lazy import)
             import torch
@@ -204,6 +215,116 @@ class ImageGenerator(QObject):
             
             self.log_message.emit(error_msg, "error")
             self.log_message.emit('\n'.join(formatted_trace), "error")
+            self.generation_complete.emit(False, error_msg)
+    
+    def _generate_with_conda(self,
+                            model_type: str,
+                            scheduler: str,
+                            c: float,
+                            use_att: bool,
+                            prompt_file: str,
+                            exp_dir: str,
+                            num_inference_steps: int,
+                            seed: int,
+                            img_size: int,
+                            conda_exe: str):
+        """Generate images using conda run to ensure correct environment."""
+        import subprocess
+        import json
+        
+        self._stop_requested = False
+        
+        try:
+            # Get project directory
+            project_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            run_py_path = os.path.join(project_dir, "run.py")
+            
+            if not os.path.exists(run_py_path):
+                raise FileNotFoundError(f"run.py not found at: {run_py_path}")
+            
+            # Convert relative paths to absolute
+            if not os.path.isabs(prompt_file):
+                prompt_file = os.path.join(project_dir, prompt_file)
+            prompt_file = os.path.normpath(prompt_file)
+            
+            if not os.path.isabs(exp_dir):
+                exp_dir = os.path.join(project_dir, exp_dir)
+            exp_dir = os.path.normpath(exp_dir)
+            
+            # Build command arguments
+            cmd_args = [
+                conda_exe, "run", "-n", "amo",
+                "python", run_py_path,
+                "--model_type", model_type,
+                "--scheduler", scheduler,
+                "--prompt_file", prompt_file,
+                "--img_size", str(img_size),
+                "--num_inference_steps", str(num_inference_steps),
+                "--seed", str(seed),
+                "--exp_dir", exp_dir
+            ]
+            
+            # Add overshoot parameters if needed
+            if scheduler == "overshoot":
+                cmd_args.extend(["--c", str(c)])
+                if use_att:
+                    cmd_args.append("--use_att")
+            
+            self.log_message.emit(f"Command: {' '.join(cmd_args)}", "info")
+            self.log_message.emit("Executing in conda environment 'amo'...", "step")
+            
+            # Change to project directory
+            original_cwd = os.getcwd()
+            os.chdir(project_dir)
+            
+            try:
+                # Run the command and capture output
+                process = subprocess.Popen(
+                    cmd_args,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                    bufsize=1,
+                    universal_newlines=True
+                )
+                
+                # Read output line by line and emit as logs
+                for line in process.stdout:
+                    if self._stop_requested:
+                        process.terminate()
+                        break
+                    line = line.strip()
+                    if line:
+                        # Determine log level based on content
+                        if "ERROR" in line.upper() or "FAILED" in line.upper():
+                            level = "error"
+                        elif "WARNING" in line.upper():
+                            level = "warning"
+                        elif "Step" in line or "Loading" in line or "Processing" in line:
+                            level = "step"
+                        else:
+                            level = "info"
+                        self.log_message.emit(line, level)
+                
+                # Wait for process to complete
+                return_code = process.wait()
+                
+                if return_code == 0:
+                    self.log_message.emit("Generation completed successfully!", "info")
+                    self.generation_complete.emit(True, "Generation completed successfully!")
+                else:
+                    error_msg = f"Generation failed with return code {return_code}"
+                    self.log_message.emit(error_msg, "error")
+                    self.generation_complete.emit(False, error_msg)
+                    
+            finally:
+                os.chdir(original_cwd)
+                
+        except Exception as e:
+            error_msg = f"Generation failed: {str(e)}"
+            error_trace = traceback.format_exc()
+            self.log_message.emit(error_msg, "error")
+            self.log_message.emit(error_trace, "error")
             self.generation_complete.emit(False, error_msg)
 
 

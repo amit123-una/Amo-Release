@@ -513,7 +513,7 @@ class MainWindow(QMainWindow):
         return True
         
     def _start_generation(self):
-        """Start the image generation process."""
+        """Start the image generation process with conda environment activation."""
         if not self._validate_inputs():
             return
             
@@ -533,6 +533,25 @@ class MainWindow(QMainWindow):
         self.progress_bar.setVisible(True)
         self.progress_bar.setValue(0)
         
+        # Find Anaconda installation for conda run
+        conda_base = None
+        if os.path.exists(os.path.join(os.path.expanduser("~"), "anaconda3", "Scripts", "conda.exe")):
+            conda_base = os.path.join(os.path.expanduser("~"), "anaconda3")
+        elif os.path.exists(os.path.join(os.getenv("LOCALAPPDATA", ""), "anaconda3", "Scripts", "conda.exe")):
+            conda_base = os.path.join(os.getenv("LOCALAPPDATA", ""), "anaconda3")
+        elif os.path.exists(os.path.join(os.path.expanduser("~"), "miniconda3", "Scripts", "conda.exe")):
+            conda_base = os.path.join(os.path.expanduser("~"), "miniconda3")
+        elif os.path.exists(os.path.join(os.getenv("LOCALAPPDATA", ""), "miniconda3", "Scripts", "conda.exe")):
+            conda_base = os.path.join(os.getenv("LOCALAPPDATA", ""), "miniconda3")
+        
+        if not conda_base:
+            self.log_text.append_log("WARNING: Conda not found. Running without conda environment.", "warning")
+            conda_exe = None
+        else:
+            conda_exe = os.path.join(conda_base, "Scripts", "conda.exe")
+            self.log_text.append_log(f"Found Anaconda at: {conda_base}", "info")
+            self.log_text.append_log("Activating conda environment 'amo'...", "step")
+        
         # Get parameters
         params = {
             "model_type": self._get_model_type(),
@@ -543,7 +562,8 @@ class MainWindow(QMainWindow):
             "exp_dir": self.output_dir_edit.text(),
             "num_inference_steps": self.num_inference_steps.value(),
             "seed": self.seed.value(),
-            "img_size": self.img_size.value()
+            "img_size": self.img_size.value(),
+            "conda_exe": conda_exe  # Pass conda executable to generator
         }
         
         # Create generator and worker
