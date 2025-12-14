@@ -289,12 +289,14 @@ class ImageGenerator(QObject):
                 )
                 
                 # Read output line by line and emit as logs
+                line_count = 0
                 for line in process.stdout:
                     if self._stop_requested:
                         process.terminate()
                         break
                     line = line.strip()
                     if line:
+                        line_count += 1
                         # Determine log level based on content
                         if "ERROR" in line.upper() or "FAILED" in line.upper():
                             level = "error"
@@ -305,9 +307,40 @@ class ImageGenerator(QObject):
                         else:
                             level = "info"
                         self.log_message.emit(line, level)
+                        
+                        # Update progress based on keywords in output
+                        if "Loading model" in line or "Loading" in line:
+                            self.step_update.emit(10)
+                        elif "Setting up scheduler" in line or "scheduler" in line.lower():
+                            self.step_update.emit(20)
+                        elif "Processing prompt" in line or "Processing" in line:
+                            # Extract prompt number if possible
+                            try:
+                                if "/" in line:
+                                    parts = line.split("/")
+                                    if len(parts) >= 2:
+                                        current = int(parts[0].split()[-1])
+                                        total = int(parts[1].split()[0])
+                                        progress = 20 + int((current / total) * 70)  # 20-90%
+                                        self.step_update.emit(progress)
+                            except:
+                                pass
+                        elif "Starting inference" in line or "inference" in line.lower():
+                            self.step_update.emit(85)
+                        elif "Image saved" in line or "saved" in line.lower():
+                            self.step_update.emit(95)
                 
                 # Wait for process to complete
                 return_code = process.wait()
+                
+                # Scan for generated images and emit them
+                self.step_update.emit(100)
+                if os.path.exists(exp_dir):
+                    for root, dirs, files in os.walk(exp_dir):
+                        for file in files:
+                            if file.lower().endswith(('.png', '.jpg', '.jpeg')):
+                                img_path = os.path.join(root, file)
+                                self.image_generated.emit(img_path, "")
                 
                 if return_code == 0:
                     self.log_message.emit("Generation completed successfully!", "info")

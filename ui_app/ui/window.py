@@ -12,7 +12,8 @@ from PyQt5.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
     QLabel, QPushButton, QLineEdit, QSpinBox, QDoubleSpinBox,
     QCheckBox, QRadioButton, QButtonGroup, QTextEdit, QScrollArea,
-    QGroupBox, QFileDialog, QMessageBox, QProgressBar, QSizePolicy
+    QGroupBox, QFileDialog, QMessageBox, QProgressBar, QSizePolicy,
+    QDialog, QDialogButtonBox, QPlainTextEdit
 )
 from PyQt5.QtCore import Qt, QSize, pyqtSlot
 from PyQt5.QtGui import QPixmap, QImage, QFont, QIcon
@@ -79,75 +80,6 @@ class LogTextEdit(QTextEdit):
                    .replace("\n", "<br>"))
 
 
-class ImagePreviewWidget(QWidget):
-    """Widget for displaying a single image preview with view button."""
-    
-    def __init__(self, image_path: str, prompt: str, parent=None):
-        super().__init__(parent)
-        self.image_path = image_path
-        self.prompt = prompt
-        
-        layout = QVBoxLayout()
-        layout.setContentsMargins(5, 5, 5, 5)
-        layout.setSpacing(5)
-        layout.setAlignment(Qt.AlignTop)
-        
-        # Image label
-        self.image_label = QLabel()
-        self.image_label.setAlignment(Qt.AlignCenter)
-        self.image_label.setMinimumSize(250, 250)
-        self.image_label.setMaximumSize(350, 350)
-        self.image_label.setScaledContents(True)
-        self.image_label.setStyleSheet("border: 1px solid #ccc; background: #f0f0f0; border-radius: 4px;")
-        
-        # Load and display image
-        self._load_image()
-        
-        # View button
-        view_btn = QPushButton("View Full Image")
-        view_btn.setStyleSheet("padding: 5px;")
-        view_btn.clicked.connect(self._open_image)
-        
-        # Prompt label (truncated)
-        prompt_label = QLabel(prompt[:80] + "..." if len(prompt) > 80 else prompt)
-        prompt_label.setWordWrap(True)
-        prompt_label.setStyleSheet("font-size: 9pt; color: #666; padding: 5px;")
-        prompt_label.setMaximumWidth(350)
-        
-        layout.addWidget(self.image_label)
-        layout.addWidget(prompt_label)
-        layout.addWidget(view_btn)
-        
-        self.setLayout(layout)
-        self.setFixedWidth(360)
-        
-    def _load_image(self):
-        """Load and display the image."""
-        if os.path.exists(self.image_path):
-            pixmap = QPixmap(self.image_path)
-            if not pixmap.isNull():
-                # Scale to fit
-                scaled = pixmap.scaled(
-                    self.image_label.size(),
-                    Qt.KeepAspectRatio,
-                    Qt.SmoothTransformation
-                )
-                self.image_label.setPixmap(scaled)
-            else:
-                self.image_label.setText("Failed to load image")
-        else:
-            self.image_label.setText("Image not found")
-            
-    def _open_image(self):
-        """Open the image in the system default viewer."""
-        if sys.platform == "win32":
-            os.startfile(self.image_path)
-        elif sys.platform == "darwin":
-            subprocess.run(["open", self.image_path])
-        else:
-            subprocess.run(["xdg-open", self.image_path])
-
-
 class MainWindow(QMainWindow):
     """Main application window."""
     
@@ -156,7 +88,7 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.generation_worker: Optional[GenerationWorker] = None
-        self.generated_images: List[ImagePreviewWidget] = []
+        self.generated_files: List[str] = []  # Store file paths instead of widgets
         
         self.setWindowTitle("AMO Image Generator")
         self.setMinimumSize(1200, 800)
@@ -294,11 +226,30 @@ class MainWindow(QMainWindow):
             self.scheduler_overshoot.isChecked()
         ))
         
-        # Prompt File
-        prompt_group = QGroupBox("Prompt File")
+        # Prompt Input Options
+        prompt_group = QGroupBox("Prompt Input")
         prompt_layout = QVBoxLayout()
         prompt_layout.setSpacing(8)
         prompt_layout.setContentsMargins(10, 10, 10, 10)
+        
+        # Radio buttons for input method
+        self.prompt_input_group = QButtonGroup()
+        self.prompt_direct_radio = QRadioButton("Direct Input")
+        self.prompt_file_radio = QRadioButton("From File")
+        self.prompt_file_radio.setChecked(True)  # Default to file
+        self.prompt_input_group.addButton(self.prompt_direct_radio, 0)
+        self.prompt_input_group.addButton(self.prompt_file_radio, 1)
+        prompt_layout.addWidget(self.prompt_direct_radio)
+        prompt_layout.addWidget(self.prompt_file_radio)
+        
+        # Direct input text area (initially hidden)
+        self.prompt_direct_input = QPlainTextEdit()
+        self.prompt_direct_input.setPlaceholderText("Enter prompts here, one per line...")
+        self.prompt_direct_input.setMaximumHeight(100)
+        self.prompt_direct_input.setVisible(False)
+        prompt_layout.addWidget(self.prompt_direct_input)
+        
+        # File input (default visible)
         prompt_file_layout = QHBoxLayout()
         prompt_file_layout.setSpacing(5)
         self.prompt_file_edit = QLineEdit()
@@ -309,6 +260,11 @@ class MainWindow(QMainWindow):
         prompt_file_layout.addWidget(self.prompt_file_edit)
         prompt_file_layout.addWidget(prompt_file_btn)
         prompt_layout.addLayout(prompt_file_layout)
+        
+        # Connect radio buttons to show/hide inputs
+        self.prompt_direct_radio.toggled.connect(self._on_prompt_input_changed)
+        self.prompt_file_radio.toggled.connect(self._on_prompt_input_changed)
+        
         prompt_group.setLayout(prompt_layout)
         layout.addWidget(prompt_group)
         
@@ -412,44 +368,50 @@ class MainWindow(QMainWindow):
         layout.setSpacing(10)
         panel.setLayout(layout)
         
-        # Log Panel
+        # Log Panel with controls
         log_group = QGroupBox("Generation Log")
         log_layout = QVBoxLayout()
+        
+        # Log controls (copy and clear buttons)
+        log_controls = QHBoxLayout()
+        log_controls.addStretch()
+        copy_log_btn = QPushButton("📋 Copy Log")
+        copy_log_btn.setMaximumWidth(100)
+        copy_log_btn.clicked.connect(self._copy_log)
+        clear_log_btn = QPushButton("🗑️ Clear Log")
+        clear_log_btn.setMaximumWidth(100)
+        clear_log_btn.clicked.connect(self._clear_log)
+        log_controls.addWidget(copy_log_btn)
+        log_controls.addWidget(clear_log_btn)
+        log_layout.addLayout(log_controls)
+        
+        # Log text area (responsive)
         self.log_text = LogTextEdit()
         log_layout.addWidget(self.log_text)
         log_group.setLayout(log_layout)
-        log_group.setMaximumHeight(250)
-        layout.addWidget(log_group)
+        log_group.setMinimumHeight(200)
+        log_group.setMaximumHeight(400)
+        layout.addWidget(log_group, stretch=1)
         
-        # Preview Panel
-        preview_group = QGroupBox("Generated Images")
-        preview_layout = QVBoxLayout()
+        # Generated Files Panel
+        files_group = QGroupBox("Generated Files")
+        files_layout = QVBoxLayout()
         
-        # Scroll area for image gallery
+        # Scroll area for file list
         scroll_area = QScrollArea()
         scroll_area.setWidgetResizable(True)
-        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         
-        self.gallery_widget = QWidget()
-        self.gallery_layout = QVBoxLayout()
-        self.gallery_layout.setAlignment(Qt.AlignTop)
-        self.gallery_widget.setLayout(self.gallery_layout)
+        self.files_widget = QWidget()
+        self.files_layout = QVBoxLayout()
+        self.files_layout.setAlignment(Qt.AlignTop)
+        self.files_widget.setLayout(self.files_layout)
         
-        # Container for image grid (using flow layout approach)
-        self.image_container = QWidget()
-        self.image_grid = QGridLayout()
-        self.image_grid.setSpacing(10)
-        self.image_grid.setAlignment(Qt.AlignTop)
-        self.image_container.setLayout(self.image_grid)
+        scroll_area.setWidget(self.files_widget)
+        files_layout.addWidget(scroll_area)
+        files_group.setLayout(files_layout)
         
-        self.gallery_layout.addWidget(self.image_container)
-        self.gallery_layout.addStretch()
-        
-        scroll_area.setWidget(self.gallery_widget)
-        preview_layout.addWidget(scroll_area)
-        preview_group.setLayout(preview_layout)
-        
-        layout.addWidget(preview_group, stretch=1)
+        layout.addWidget(files_group, stretch=1)
         
         return panel
         
@@ -463,13 +425,36 @@ class MainWindow(QMainWindow):
             
     def _browse_output_dir(self):
         """Browse for output directory."""
-        dir_path = QFileDialog.getExistingDirectory(self, "Select Output Directory")
+        current_dir = self.output_dir_edit.text()
+        # Convert relative path to absolute if needed
+        if current_dir and not os.path.isabs(current_dir):
+            project_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            current_dir = os.path.join(project_dir, current_dir)
+            if not os.path.exists(current_dir):
+                current_dir = project_dir
+        
+        dir_path = QFileDialog.getExistingDirectory(self, "Select Output Directory", current_dir)
         if dir_path:
             self.output_dir_edit.setText(dir_path)
             
     def _open_output_folder(self):
         """Open the output folder in system file explorer."""
         output_dir = self.output_dir_edit.text()
+        
+        # Convert relative path to absolute
+        if output_dir and not os.path.isabs(output_dir):
+            project_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            output_dir = os.path.join(project_dir, output_dir)
+        
+        # Create directory if it doesn't exist
+        if output_dir and not os.path.exists(output_dir):
+            try:
+                os.makedirs(output_dir, exist_ok=True)
+            except Exception as e:
+                QMessageBox.warning(self, "Directory Error", 
+                                  f"Could not create directory:\n{output_dir}\n\nError: {str(e)}")
+                return
+        
         if not output_dir or not os.path.exists(output_dir):
             QMessageBox.warning(self, "Directory Not Found", 
                               f"Output directory does not exist:\n{output_dir}")
@@ -481,6 +466,15 @@ class MainWindow(QMainWindow):
             subprocess.run(["open", output_dir])
         else:
             subprocess.run(["xdg-open", output_dir])
+    
+    def _on_prompt_input_changed(self):
+        """Handle prompt input method change."""
+        if self.prompt_direct_radio.isChecked():
+            self.prompt_direct_input.setVisible(True)
+            self.prompt_file_edit.setEnabled(False)
+        else:
+            self.prompt_direct_input.setVisible(False)
+            self.prompt_file_edit.setEnabled(True)
             
     def _get_model_type(self) -> str:
         """Get selected model type."""
@@ -498,11 +492,27 @@ class MainWindow(QMainWindow):
         
     def _validate_inputs(self) -> bool:
         """Validate user inputs."""
-        prompt_file = self.prompt_file_edit.text()
-        if not prompt_file or not os.path.exists(prompt_file):
-            QMessageBox.critical(self, "Validation Error", 
-                               f"Prompt file not found:\n{prompt_file}")
-            return False
+        # Check prompt input method
+        if self.prompt_direct_radio.isChecked():
+            prompts_text = self.prompt_direct_input.toPlainText().strip()
+            if not prompts_text:
+                QMessageBox.critical(self, "Validation Error", 
+                                   "Please enter at least one prompt in the direct input field.")
+                return False
+        else:
+            prompt_file = self.prompt_file_edit.text()
+            if not prompt_file:
+                QMessageBox.critical(self, "Validation Error", 
+                                   "Please specify a prompt file.")
+                return False
+            # Convert to absolute path if relative
+            if not os.path.isabs(prompt_file):
+                project_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+                prompt_file = os.path.join(project_dir, prompt_file)
+            if not os.path.exists(prompt_file):
+                QMessageBox.critical(self, "Validation Error", 
+                                   f"Prompt file not found:\n{prompt_file}")
+                return False
             
         output_dir = self.output_dir_edit.text()
         if not output_dir:
@@ -523,15 +533,62 @@ class MainWindow(QMainWindow):
             return
             
         # Clear previous results
-        self._clear_preview()
+        self._clear_files_list()
         self.log_text.clear()
         self.log_text.append_log("Starting image generation...", "step")
         
-        # Disable controls
+        # Disable generate button and enable stop button
         self.generate_btn.setEnabled(False)
         self.stop_btn.setEnabled(True)
         self.progress_bar.setVisible(True)
         self.progress_bar.setValue(0)
+        self.progress_bar.setMaximum(100)
+        self.progress_bar.setFormat("Initializing...")
+        
+        # Handle prompt input based on selected method
+        import tempfile
+        import datetime
+        
+        if self.prompt_direct_radio.isChecked():
+            # Create temporary file from direct input
+            prompts_text = self.prompt_direct_input.toPlainText().strip()
+            prompts_list = [line.strip() for line in prompts_text.split('\n') if line.strip()]
+            
+            if not prompts_list:
+                QMessageBox.critical(self, "Validation Error", "No prompts entered.")
+                self.generate_btn.setEnabled(True)
+                self.stop_btn.setEnabled(False)
+                return
+            
+            # Create unique temporary file
+            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            temp_prompt_file = os.path.join(tempfile.gettempdir(), f"amo_prompts_{timestamp}_{os.getpid()}.txt")
+            with open(temp_prompt_file, 'w', encoding='utf-8') as f:
+                for prompt in prompts_list:
+                    f.write(prompt + '\n')
+            prompt_file = temp_prompt_file
+            self.log_text.append_log(f"Created temporary prompt file with {len(prompts_list)} prompt(s)", "info")
+        else:
+            prompt_file = self.prompt_file_edit.text()
+            # Convert to absolute path if relative
+            if not os.path.isabs(prompt_file):
+                project_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+                prompt_file = os.path.join(project_dir, prompt_file)
+        
+        # Get output directory and create datetime-based structure
+        exp_dir = self.output_dir_edit.text()
+        if not os.path.isabs(exp_dir):
+            project_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            exp_dir = os.path.join(project_dir, exp_dir)
+        
+        # Create module and datetime-based folder structure
+        # Structure: base_dir/model_type/YYYYMMDD_HHMMSS/
+        model_type = self._get_model_type()
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        exp_dir = os.path.join(exp_dir, model_type, timestamp)
+        os.makedirs(exp_dir, exist_ok=True)
+        self.log_text.append_log(f"Output directory: {exp_dir}", "info")
+        self.log_text.append_log(f"Organized by module ({model_type}) and datetime ({timestamp})", "info")
         
         # Find Anaconda installation for conda run
         conda_base = None
@@ -554,12 +611,12 @@ class MainWindow(QMainWindow):
         
         # Get parameters
         params = {
-            "model_type": self._get_model_type(),
+            "model_type": model_type,
             "scheduler": self._get_scheduler(),
             "c": self.c_value.value(),
             "use_att": self.use_att.isChecked(),
-            "prompt_file": self.prompt_file_edit.text(),
-            "exp_dir": self.output_dir_edit.text(),
+            "prompt_file": prompt_file,
+            "exp_dir": exp_dir,
             "num_inference_steps": self.num_inference_steps.value(),
             "seed": self.seed.value(),
             "img_size": self.img_size.value(),
@@ -570,6 +627,7 @@ class MainWindow(QMainWindow):
         generator = ImageGenerator()
         generator.log_message.connect(self._on_log_message)
         generator.progress_update.connect(self._on_progress_update)
+        generator.step_update.connect(self._on_step_update)
         generator.image_generated.connect(self._on_image_generated)
         generator.generation_complete.connect(self._on_generation_complete)
         
@@ -595,13 +653,20 @@ class MainWindow(QMainWindow):
         self.progress_bar.setValue(current)
         percent = int((current / total) * 100) if total > 0 else 0
         self.progress_bar.setFormat(f"Progress: {current}/{total} ({percent}%)")
+    
+    @pyqtSlot(int)
+    def _on_step_update(self, step: int):
+        """Handle step updates for progress bar."""
+        # Update progress based on steps (0-100)
+        self.progress_bar.setValue(step)
+        self.progress_bar.setFormat(f"Step: {step}%")
         
     @pyqtSlot(str, str)
     def _on_image_generated(self, image_path: str, prompt: str):
-        """Handle new image generated."""
-        preview_widget = ImagePreviewWidget(image_path, prompt, self)
-        self.generated_images.append(preview_widget)
-        self._update_preview_grid()
+        """Handle new image generated - add to files list."""
+        if image_path and os.path.exists(image_path):
+            self.generated_files.append(image_path)
+            self._add_file_to_list(image_path)
         
     @pyqtSlot(bool, str)
     def _on_generation_complete(self, success: bool, message: str):
@@ -618,32 +683,90 @@ class MainWindow(QMainWindow):
         self.progress_bar.setVisible(False)
         self.log_text.append_log("Generation process finished.", "step")
         
-    def _clear_preview(self):
-        """Clear the preview gallery."""
-        for widget in self.generated_images:
-            widget.deleteLater()
-        self.generated_images.clear()
-        
-        # Clear grid
-        while self.image_grid.count():
-            child = self.image_grid.takeAt(0)
+    def _clear_files_list(self):
+        """Clear the files list."""
+        while self.files_layout.count():
+            child = self.files_layout.takeAt(0)
             if child.widget():
                 child.widget().deleteLater()
-                
-    def _update_preview_grid(self):
-        """Update the preview grid layout."""
-        # Clear only the grid, not the widgets list
-        while self.image_grid.count():
-            child = self.image_grid.takeAt(0)
-            if child.widget():
-                child.widget().setParent(None)
+        self.generated_files.clear()
+    
+    def _add_file_to_list(self, file_path: str):
+        """Add a generated file to the list with preview button."""
+        file_widget = QWidget()
+        file_layout = QHBoxLayout()
+        file_layout.setContentsMargins(5, 5, 5, 5)
         
-        # Add all images in a grid (2 columns)
-        cols = 2
-        for i, widget in enumerate(self.generated_images):
-            row = i // cols
-            col = i % cols
-            self.image_grid.addWidget(widget, row, col)
+        # File path label
+        file_label = QLabel(file_path)
+        file_label.setWordWrap(True)
+        file_label.setStyleSheet("padding: 5px;")
+        file_layout.addWidget(file_label, stretch=1)
+        
+        # Preview button
+        preview_btn = QPushButton("Preview")
+        preview_btn.setMaximumWidth(80)
+        preview_btn.clicked.connect(lambda checked, path=file_path: self._preview_image(path))
+        file_layout.addWidget(preview_btn)
+        
+        file_widget.setLayout(file_layout)
+        file_widget.setStyleSheet("border: 1px solid #ccc; border-radius: 3px; margin: 2px;")
+        self.files_layout.addWidget(file_widget)
+    
+    def _preview_image(self, image_path: str):
+        """Show image preview in a popup dialog."""
+        if not os.path.exists(image_path):
+            QMessageBox.warning(self, "File Not Found", f"Image file not found:\n{image_path}")
+            return
+        
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Image Preview")
+        dialog.setMinimumSize(800, 600)
+        
+        layout = QVBoxLayout()
+        
+        # Image label
+        image_label = QLabel()
+        pixmap = QPixmap(image_path)
+        if not pixmap.isNull():
+            # Scale to fit dialog while maintaining aspect ratio
+            scaled_pixmap = pixmap.scaled(780, 580, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            image_label.setPixmap(scaled_pixmap)
+        else:
+            image_label.setText("Failed to load image")
+        
+        image_label.setAlignment(Qt.AlignCenter)
+        layout.addWidget(image_label)
+        
+        # File path label
+        path_label = QLabel(f"File: {image_path}")
+        path_label.setWordWrap(True)
+        path_label.setStyleSheet("padding: 5px; color: #666;")
+        layout.addWidget(path_label)
+        
+        # Close button
+        button_box = QDialogButtonBox(QDialogButtonBox.Close)
+        button_box.rejected.connect(dialog.close)
+        layout.addWidget(button_box)
+        
+        dialog.setLayout(layout)
+        dialog.exec_()
+    
+    def _copy_log(self):
+        """Copy log content to clipboard."""
+        log_content = self.log_text.toPlainText()
+        if log_content:
+            from PyQt5.QtWidgets import QApplication
+            clipboard = QApplication.clipboard()
+            clipboard.setText(log_content)
+            self.log_text.append_log("Log copied to clipboard!", "info")
+        else:
+            QMessageBox.information(self, "Empty Log", "No log content to copy.")
+    
+    def _clear_log(self):
+        """Clear the log content."""
+        self.log_text.clear()
+        self.log_text.append_log("Log cleared.", "info")
             
     def _save_settings(self):
         """Save current settings to JSON file."""
@@ -652,6 +775,8 @@ class MainWindow(QMainWindow):
             "scheduler": self._get_scheduler(),
             "c": self.c_value.value(),
             "use_att": self.use_att.isChecked(),
+            "prompt_input_method": "direct" if self.prompt_direct_radio.isChecked() else "file",
+            "prompt_direct_input": self.prompt_direct_input.toPlainText(),
             "prompt_file": self.prompt_file_edit.text(),
             "output_dir": self.output_dir_edit.text(),
             "num_inference_steps": self.num_inference_steps.value(),
@@ -696,7 +821,14 @@ class MainWindow(QMainWindow):
                 
             self.c_value.setValue(settings.get("c", 2.0))
             self.use_att.setChecked(settings.get("use_att", False))
-            self.prompt_file_edit.setText(settings.get("prompt_file", "prompts.txt"))
+            # Load prompt settings
+            prompt_input_method = settings.get("prompt_input_method", "file")
+            if prompt_input_method == "direct":
+                self.prompt_direct_radio.setChecked(True)
+                self.prompt_direct_input.setPlainText(settings.get("prompt_direct_input", ""))
+            else:
+                self.prompt_file_radio.setChecked(True)
+                self.prompt_file_edit.setText(settings.get("prompt_file", "prompts.txt"))
             self.output_dir_edit.setText(settings.get("output_dir", "exps/flux"))
             self.num_inference_steps.setValue(settings.get("num_inference_steps", 28))
             self.seed.setValue(settings.get("seed", 10))
@@ -704,6 +836,9 @@ class MainWindow(QMainWindow):
             
             # Update overshoot group enabled state
             self.overshoot_group.setEnabled(self.scheduler_overshoot.isChecked())
+            
+            # Update prompt input visibility based on loaded setting
+            self._on_prompt_input_changed()
             
             self.log_text.append_log(f"Settings loaded from {self.SETTINGS_FILE}", "info")
         except Exception as e:
