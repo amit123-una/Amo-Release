@@ -27,17 +27,13 @@ echo.
 
 REM Step 0: Activate Conda Environment
 echo [STEP 0] Activating conda environment 'amo'...
-(
-    echo [STEP 0] Activating conda environment 'amo'...
-) >> "%VALIDATION_LOG%"
+echo [STEP 0] Activating conda environment 'amo'... >> "%VALIDATION_LOG%"
 
 REM Check if conda is available
 where conda >nul 2>&1
 if errorlevel 1 (
     echo [WARNING] Conda not found in PATH, trying to initialize...
-    (
-        echo [WARNING] Conda not found in PATH, trying to initialize...
-    ) >> "%VALIDATION_LOG%"
+    echo [WARNING] Conda not found in PATH, trying to initialize... >> "%VALIDATION_LOG%"
     
     REM Try common conda installation paths
     if exist "%USERPROFILE%\anaconda3\Scripts\conda.exe" (
@@ -54,130 +50,107 @@ if errorlevel 1 (
         call "%CONDA_BASE%\Scripts\activate.bat" %CONDA_BASE%
     ) else (
         echo [WARN] Conda not found. Continuing without conda activation...
-        (
-            echo [WARN] Conda not found. Continuing without conda activation...
-        ) >> "%VALIDATION_LOG%"
+        echo [WARN] Conda not found. Continuing without conda activation... >> "%VALIDATION_LOG%"
     )
 ) else (
     REM Activate conda environment 'amo'
     call conda activate amo >> "%VALIDATION_LOG%" 2>&1
     if errorlevel 1 (
         echo [WARN] Failed to activate conda environment 'amo', continuing...
-        (
-            echo [WARN] Failed to activate conda environment 'amo', continuing...
-        ) >> "%VALIDATION_LOG%"
+        echo [WARN] Failed to activate conda environment 'amo', continuing... >> "%VALIDATION_LOG%"
     ) else (
         echo [PASS] Conda environment 'amo' activated
-        (
-            echo [PASS] Conda environment 'amo' activated
-        ) >> "%VALIDATION_LOG%"
+        echo [PASS] Conda environment 'amo' activated >> "%VALIDATION_LOG%"
     )
 )
 echo.
 
 REM Check 1: Dataset Directory
 echo [CHECK 1] Dataset directory...
+echo [CHECK 1] Dataset directory... >> "%VALIDATION_LOG%"
 if exist "%DATASET_DIR%" (
     echo [PASS] Dataset directory exists
-    (
-        echo [CHECK 1] Dataset directory...
-        echo [PASS] Dataset directory exists
-    ) >> "%VALIDATION_LOG%"
+    echo [PASS] Dataset directory exists >> "%VALIDATION_LOG%"
 ) else (
     echo [FAIL] Dataset directory not found: %DATASET_DIR%
-    (
-        echo [CHECK 1] Dataset directory...
-        echo [FAIL] Dataset directory not found: %DATASET_DIR%
-    ) >> "%VALIDATION_LOG%"
+    echo [FAIL] Dataset directory not found: %DATASET_DIR% >> "%VALIDATION_LOG%"
     set VALIDATION_PASSED=0
 )
 echo.
 
 REM Check 2: Images Directory
 echo [CHECK 2] Images directory...
+echo [CHECK 2] Images directory... >> "%VALIDATION_LOG%"
 if exist "%DATASET_DIR%\images" (
     echo [PASS] Images directory exists
-    (
-        echo [CHECK 2] Images directory...
-        echo [PASS] Images directory exists
-    ) >> "%VALIDATION_LOG%"
+    echo [PASS] Images directory exists >> "%VALIDATION_LOG%"
 ) else (
     echo [FAIL] Images directory not found
-    (
-        echo [CHECK 2] Images directory...
-        echo [FAIL] Images directory not found
-    ) >> "%VALIDATION_LOG%"
+    echo [FAIL] Images directory not found >> "%VALIDATION_LOG%"
     set VALIDATION_PASSED=0
+    goto :skip_image_checks
 )
 echo.
 
 REM Check 3: Labels File
 echo [CHECK 3] Labels file...
+echo [CHECK 3] Labels file... >> "%VALIDATION_LOG%"
 if exist "%DATASET_DIR%\labels.txt" (
     echo [PASS] Labels file exists
+    echo [PASS] Labels file exists >> "%VALIDATION_LOG%"
     for /f %%i in ('find /c /v "" ^< "%DATASET_DIR%\labels.txt"') do set LABEL_COUNT=%%i
     echo   Found !LABEL_COUNT! entries in labels file
-    (
-        echo [CHECK 3] Labels file...
-        echo [PASS] Labels file exists
-        echo   Found !LABEL_COUNT! entries in labels file
-    ) >> "%VALIDATION_LOG%"
+    echo   Found !LABEL_COUNT! entries in labels file >> "%VALIDATION_LOG%"
 ) else (
     echo [FAIL] Labels file not found
-    (
-        echo [CHECK 3] Labels file...
-        echo [FAIL] Labels file not found
-    ) >> "%VALIDATION_LOG%"
+    echo [FAIL] Labels file not found >> "%VALIDATION_LOG%"
     set VALIDATION_PASSED=0
 )
 echo.
 
 REM Check 4: Image Count
 echo [CHECK 4] Generated images...
+echo [CHECK 4] Generated images... >> "%VALIDATION_LOG%"
 set IMAGE_COUNT=0
+set IMAGES_DIR_EXISTS=0
 if exist "%DATASET_DIR%\images" (
-    for /f %%i in ('dir /b /a-d "%DATASET_DIR%\images\*.png" 2^>nul ^| find /c /v ""') do set IMAGE_COUNT=%%i
-    
+    set IMAGES_DIR_EXISTS=1
+    REM Count PNG files using a temporary file to avoid loop issues
+    dir /b /a-d "%DATASET_DIR%\images\*.png" 2>nul | find /c /v "" > "%TEMP%\img_count.tmp"
+    if exist "%TEMP%\img_count.tmp" (
+        for /f %%i in ('type "%TEMP%\img_count.tmp"') do set IMAGE_COUNT=%%i
+        del "%TEMP%\img_count.tmp" >nul 2>&1
+    )
+)
+
+if !IMAGES_DIR_EXISTS! EQU 1 (
     if !IMAGE_COUNT! GTR 0 (
         if !IMAGE_COUNT! GEQ 100 (
             echo [PASS] Found !IMAGE_COUNT! images (excellent - 100+ images)
-            (
-                echo [CHECK 4] Generated images...
-                echo [PASS] Found !IMAGE_COUNT! images (excellent - 100+ images)
-            ) >> "%VALIDATION_LOG%"
+            echo [PASS] Found !IMAGE_COUNT! images (excellent - 100+ images) >> "%VALIDATION_LOG%"
         ) else if !IMAGE_COUNT! GEQ 10 (
             echo [PASS] Found !IMAGE_COUNT! images (minimum: 10)
-            (
-                echo [CHECK 4] Generated images...
-                echo [PASS] Found !IMAGE_COUNT! images (minimum: 10)
-            ) >> "%VALIDATION_LOG%"
+            echo [PASS] Found !IMAGE_COUNT! images (minimum: 10) >> "%VALIDATION_LOG%"
         ) else (
             echo [WARN] Only !IMAGE_COUNT! images found (expected at least 10)
-            (
-                echo [CHECK 4] Generated images...
-                echo [WARN] Only !IMAGE_COUNT! images found (expected at least 10)
-            ) >> "%VALIDATION_LOG%"
+            echo [WARN] Only !IMAGE_COUNT! images found (expected at least 10) >> "%VALIDATION_LOG%"
         )
     ) else (
         echo [FAIL] No images found in dataset
-        (
-            echo [CHECK 4] Generated images...
-            echo [FAIL] No images found in dataset
-        ) >> "%VALIDATION_LOG%"
+        echo [FAIL] No images found in dataset >> "%VALIDATION_LOG%"
         set VALIDATION_PASSED=0
     )
 ) else (
     echo [FAIL] Images directory not found
-    (
-        echo [CHECK 4] Generated images...
-        echo [FAIL] Images directory not found
-    ) >> "%VALIDATION_LOG%"
+    echo [FAIL] Images directory not found >> "%VALIDATION_LOG%"
     set VALIDATION_PASSED=0
 )
 echo.
 
 REM Check 5: Sample Image Validation
+:skip_image_checks
 echo [CHECK 5] Sample image validation...
+echo [CHECK 5] Sample image validation... >> "%VALIDATION_LOG%"
 set SAMPLE_IMAGE=
 if exist "%DATASET_DIR%\images" (
     for %%f in ("%DATASET_DIR%\images\*.png") do (
@@ -190,50 +163,33 @@ if exist "%DATASET_DIR%\images" (
         python -c "from PIL import Image; img = Image.open(r'!SAMPLE_IMAGE!'); print('Size:', img.size, 'Mode:', img.mode)" >nul 2>&1
         if errorlevel 1 (
             echo [WARN] Could not validate sample image format
-            (
-                echo [CHECK 5] Sample image validation...
-                echo [WARN] Could not validate sample image format
-            ) >> "%VALIDATION_LOG%"
+            echo [WARN] Could not validate sample image format >> "%VALIDATION_LOG%"
         ) else (
             echo [PASS] Sample image is valid
-            (
-                echo [CHECK 5] Sample image validation...
-                echo [PASS] Sample image is valid
-            ) >> "%VALIDATION_LOG%"
+            echo [PASS] Sample image is valid >> "%VALIDATION_LOG%"
         )
     ) else (
         echo [FAIL] No sample images to validate
-        (
-            echo [CHECK 5] Sample image validation...
-            echo [FAIL] No sample images to validate
-        ) >> "%VALIDATION_LOG%"
+        echo [FAIL] No sample images to validate >> "%VALIDATION_LOG%"
         set VALIDATION_PASSED=0
     )
 ) else (
     echo [SKIP] Images directory not found, skipping validation
-    (
-        echo [CHECK 5] Sample image validation...
-        echo [SKIP] Images directory not found, skipping validation
-    ) >> "%VALIDATION_LOG%"
+    echo [SKIP] Images directory not found, skipping validation >> "%VALIDATION_LOG%"
 )
 echo.
 
 REM Check 6: Module Imports
 echo [CHECK 6] Module imports...
+echo [CHECK 6] Module imports... >> "%VALIDATION_LOG%"
 python -c "from arabic_text_utils import contains_arabic; from arabic_dataset import ArabicDatasetGenerator; from arabic_encoder import ArabicGlyphEncoder; print('OK')" >nul 2>&1
 if errorlevel 1 (
     echo [FAIL] Module imports failed
-    (
-        echo [CHECK 6] Module imports...
-        echo [FAIL] Module imports failed
-    ) >> "%VALIDATION_LOG%"
+    echo [FAIL] Module imports failed >> "%VALIDATION_LOG%"
     set VALIDATION_PASSED=0
 ) else (
     echo [PASS] All modules can be imported
-    (
-        echo [CHECK 6] Module imports...
-        echo [PASS] All modules can be imported
-    ) >> "%VALIDATION_LOG%"
+    echo [PASS] All modules can be imported >> "%VALIDATION_LOG%"
 )
 echo.
 
@@ -241,26 +197,22 @@ REM Final Summary
 echo ============================================================================
 echo Validation Summary
 echo ============================================================================
-(
-    echo.
-    echo ============================================================================
-    echo Validation Summary
-    echo ============================================================================
-) >> "%VALIDATION_LOG%"
+echo. >> "%VALIDATION_LOG%"
+echo ============================================================================ >> "%VALIDATION_LOG%"
+echo Validation Summary >> "%VALIDATION_LOG%"
+echo ============================================================================ >> "%VALIDATION_LOG%"
 
 if !VALIDATION_PASSED! EQU 1 (
     echo [SUCCESS] Setup validation PASSED
-    (
-        echo [SUCCESS] Setup validation PASSED
-        echo.
-        echo Dataset is ready for training!
-        echo Location: %DATASET_DIR%
-        echo.
-        echo Next steps:
-        echo 1. Complete ControlNet training implementation
-        echo 2. Train the model using the generated dataset
-        echo 3. Set ARABIC_CONTROLNET_PATH environment variable
-    ) >> "%VALIDATION_LOG%"
+    echo [SUCCESS] Setup validation PASSED >> "%VALIDATION_LOG%"
+    echo. >> "%VALIDATION_LOG%"
+    echo Dataset is ready for training! >> "%VALIDATION_LOG%"
+    echo Location: %DATASET_DIR% >> "%VALIDATION_LOG%"
+    echo. >> "%VALIDATION_LOG%"
+    echo Next steps: >> "%VALIDATION_LOG%"
+    echo 1. Complete ControlNet training implementation >> "%VALIDATION_LOG%"
+    echo 2. Train the model using the generated dataset >> "%VALIDATION_LOG%"
+    echo 3. Set ARABIC_CONTROLNET_PATH environment variable >> "%VALIDATION_LOG%"
     echo.
     echo Dataset is ready for training!
     echo Location: %DATASET_DIR%
@@ -272,23 +224,19 @@ if !VALIDATION_PASSED! EQU 1 (
     echo.
 ) else (
     echo [FAILURE] Setup validation FAILED
-    (
-        echo [FAILURE] Setup validation FAILED
-        echo.
-        echo Please run setup_arabic_phase1.bat to complete the setup
-    ) >> "%VALIDATION_LOG%"
+    echo [FAILURE] Setup validation FAILED >> "%VALIDATION_LOG%"
+    echo. >> "%VALIDATION_LOG%"
+    echo Please run setup_arabic_phase1.bat to complete the setup >> "%VALIDATION_LOG%"
     echo.
     echo Please run setup_arabic_phase1.bat to complete the setup
     echo.
 )
 
 echo Validation log: %VALIDATION_LOG%
-(
-    echo.
-    echo Validation log: %VALIDATION_LOG%
-    echo Finished: %date% %time%
-    echo ============================================================================
-) >> "%VALIDATION_LOG%"
+echo. >> "%VALIDATION_LOG%"
+echo Validation log: %VALIDATION_LOG% >> "%VALIDATION_LOG%"
+echo Finished: %date% %time% >> "%VALIDATION_LOG%"
+echo ============================================================================ >> "%VALIDATION_LOG%"
 
 pause
 exit /b !VALIDATION_PASSED!
