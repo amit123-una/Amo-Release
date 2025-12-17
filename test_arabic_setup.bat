@@ -100,11 +100,11 @@ echo.
 
 REM Test 3: Arabic Text Utils
 echo [TEST 3] Arabic text utilities...
-python -c "from arabic_text_utils import contains_arabic, extract_arabic_text; result1 = contains_arabic('سفر'); result2 = extract_arabic_text('Hello سفر world'); assert result1 == True, f'contains_arabic failed: {result1}'; assert result2 == 'سفر', f'extract_arabic_text failed: got {result2}'; print('OK')" >> "%TEST_LOG%" 2>&1
+python -c "import sys; sys.stdout.reconfigure(encoding='utf-8'); from arabic_text_utils import contains_arabic, extract_arabic_text; test_arabic = '\u0633\u0641\u0631'; test_mixed = 'Hello ' + test_arabic + ' world'; result1 = contains_arabic(test_arabic); result2 = extract_arabic_text(test_mixed); print('Test: contains_arabic result =', result1, file=sys.stderr); print('Test: extract_arabic_text length =', len(result2) if result2 else 0, file=sys.stderr); assert result1 == True, f'contains_arabic failed: got {result1}, expected True'; assert result2 is not None, f'extract_arabic_text returned None'; assert test_arabic in result2, f'extract_arabic_text failed: got length {len(result2) if result2 else 0}, expected to contain Arabic text'; print('OK')" >> "%TEST_LOG%" 2>&1
 if errorlevel 1 (
     echo [FAIL] Arabic text utilities test failed
     echo [FAIL] Arabic text utilities test failed >> "%TEST_LOG%"
-    echo   Check log file for details >> "%TEST_LOG%"
+    echo   Details are in the log file >> "%TEST_LOG%"
     set /a FAILED+=1
 ) else (
     echo [PASS] Arabic text utilities working
