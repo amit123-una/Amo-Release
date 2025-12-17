@@ -180,12 +180,18 @@ echo [STEP 5/6] Generating synthetic dataset... >> "%LOG_FILE%"
 echo This may take 5-15 minutes depending on your system...
 echo.
 
-python train_arabic_phase1.py --vocabulary_file "%VOCABULARY_FILE%" --dataset_dir "%DATASET_DIR%" --images_per_word %IMAGES_PER_WORD% >> "%LOG_FILE%" 2>&1
+REM Generate dataset directly (skip training - not yet implemented)
+python -c "from arabic_dataset import generate_phase1_dataset; from train_arabic_phase1 import load_vocabulary; vocabulary = load_vocabulary(r'%VOCABULARY_FILE%'); print('Loaded', len(vocabulary), 'Arabic words'); generate_phase1_dataset(vocabulary, r'%DATASET_DIR%', %IMAGES_PER_WORD%); print('Dataset generation complete!')" >> "%LOG_FILE%" 2>&1
 if errorlevel 1 (
     echo [ERROR] Dataset generation failed!
     echo [ERROR] Dataset generation failed! >> "%LOG_FILE%"
     set /a ERROR_COUNT+=1
     goto :error_exit
+) else (
+    echo [SUCCESS] Dataset generation completed
+    echo [SUCCESS] Dataset generation completed >> "%LOG_FILE%"
+    echo [INFO] Note: ControlNet training is skipped (not yet implemented)
+    echo [INFO] Note: ControlNet training is skipped (not yet implemented) >> "%LOG_FILE%"
 )
 
 REM Validate dataset was created

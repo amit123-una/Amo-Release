@@ -92,6 +92,12 @@ def main():
         action="store_true",
         help="Skip dataset generation if dataset already exists",
     )
+    parser.add_argument(
+        "--skip_training",
+        action="store_true",
+        default=True,
+        help="Skip ControlNet training (default: True, training not yet implemented)",
+    )
     
     args = parser.parse_args()
     
@@ -115,28 +121,46 @@ def main():
     else:
         print(f"Using existing dataset in {args.dataset_dir}")
     
-    # Step 3: Train ControlNet
-    print(f"Starting ControlNet training...")
-    print(f"This will train a ControlNet model for accurate Arabic text rendering.")
-    print(f"Training parameters:")
-    print(f"  - Epochs: {args.num_epochs}")
-    print(f"  - Batch size: {args.batch_size}")
-    print(f"  - Learning rate: {args.learning_rate}")
-    print(f"  - Resolution: {args.resolution}")
-    
-    train_arabic_controlnet(
-        dataset_dir=args.dataset_dir,
-        output_dir=args.output_dir,
-        base_model=args.base_model,
-        num_train_epochs=args.num_epochs,
-        batch_size=args.batch_size,
-        learning_rate=args.learning_rate,
-        resolution=args.resolution,
-    )
-    
-    print(f"Training complete! Model saved to {args.output_dir}")
-    print(f"To use the trained model, set ARABIC_CONTROLNET_PATH environment variable:")
-    print(f"  export ARABIC_CONTROLNET_PATH={os.path.abspath(args.output_dir)}")
+    # Step 3: Train ControlNet (optional - skipped by default)
+    if args.skip_training:
+        print(f"\n{'='*60}")
+        print(f"ControlNet Training - SKIPPED")
+        print(f"{'='*60}")
+        print(f"NOTE: ControlNet training is not yet fully implemented.")
+        print(f"Dataset generation is complete and ready for training.")
+        print(f"\nTo train the ControlNet model, you need to:")
+        print(f"  1. Complete the training implementation in arabic_controlnet.py")
+        print(f"  2. Or adapt diffusers-amo/examples/controlnet/train_controlnet.py")
+        print(f"  3. Use the generated dataset at: {os.path.abspath(args.dataset_dir)}")
+        print(f"\nTraining parameters (when implemented):")
+        print(f"  - Epochs: {args.num_epochs}")
+        print(f"  - Batch size: {args.batch_size}")
+        print(f"  - Learning rate: {args.learning_rate}")
+        print(f"  - Resolution: {args.resolution}")
+        print(f"  - Base model: {args.base_model}")
+        print(f"\nSkipping training step (not yet implemented)...")
+    else:
+        print(f"Starting ControlNet training...")
+        print(f"This will train a ControlNet model for accurate Arabic text rendering.")
+        print(f"Training parameters:")
+        print(f"  - Epochs: {args.num_epochs}")
+        print(f"  - Batch size: {args.batch_size}")
+        print(f"  - Learning rate: {args.learning_rate}")
+        print(f"  - Resolution: {args.resolution}")
+        
+        train_arabic_controlnet(
+            dataset_dir=args.dataset_dir,
+            output_dir=args.output_dir,
+            base_model=args.base_model,
+            num_train_epochs=args.num_epochs,
+            batch_size=args.batch_size,
+            learning_rate=args.learning_rate,
+            resolution=args.resolution,
+        )
+        
+        print(f"Training complete! Model saved to {args.output_dir}")
+        print(f"To use the trained model, set ARABIC_CONTROLNET_PATH environment variable:")
+        print(f"  export ARABIC_CONTROLNET_PATH={os.path.abspath(args.output_dir)}")
 
 
 if __name__ == "__main__":
