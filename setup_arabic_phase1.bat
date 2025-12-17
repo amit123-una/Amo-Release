@@ -160,7 +160,7 @@ REM ============================================================================
 echo [STEP 4/6] Testing Arabic detection module...
 echo [STEP 4/6] Testing Arabic detection module... >> "%LOG_FILE%"
 
-python -c "from arabic_text_utils import contains_arabic, extract_arabic_text; print('Test 1:', contains_arabic('سفر')); print('Test 2:', extract_arabic_text('Hello سفر world'))" >> "%LOG_FILE%" 2>&1
+python -c "import sys; sys.stdout.reconfigure(encoding='utf-8'); from arabic_text_utils import contains_arabic, extract_arabic_text; test_arabic = '\u0633\u0641\u0631'; test_mixed = 'Hello ' + test_arabic + ' world'; result1 = contains_arabic(test_arabic); result2 = extract_arabic_text(test_mixed); print('Test 1:', result1); print('Test 2:', repr(result2) if result2 else 'None')" >> "%LOG_FILE%" 2>&1
 if errorlevel 1 (
     echo [ERROR] Arabic detection module test failed!
     echo [ERROR] Arabic detection module test failed! >> "%LOG_FILE%"
@@ -180,7 +180,7 @@ echo [STEP 5/6] Generating synthetic dataset... >> "%LOG_FILE%"
 echo This may take 5-15 minutes depending on your system...
 echo.
 
-python train_arabic_phase1.py --vocabulary_file "%VOCABULARY_FILE%" --dataset_dir "%DATASET_DIR%" --images_per_word %IMAGES_PER_WORD% --skip_dataset_generation false >> "%LOG_FILE%" 2>&1
+python train_arabic_phase1.py --vocabulary_file "%VOCABULARY_FILE%" --dataset_dir "%DATASET_DIR%" --images_per_word %IMAGES_PER_WORD% >> "%LOG_FILE%" 2>&1
 if errorlevel 1 (
     echo [ERROR] Dataset generation failed!
     echo [ERROR] Dataset generation failed! >> "%LOG_FILE%"
@@ -227,7 +227,7 @@ echo.
 REM Test dataset generator
 echo [VALIDATION] Testing dataset generator...
 echo [VALIDATION] Testing dataset generator... >> "%LOG_FILE%"
-python -c "from arabic_dataset import ArabicDatasetGenerator; gen = ArabicDatasetGenerator(); img = gen.generate_image('سفر'); img.save('test_arabic_output.png'); print('Test image saved')" >> "%LOG_FILE%" 2>&1
+python -c "from arabic_dataset import ArabicDatasetGenerator; gen = ArabicDatasetGenerator(); test_arabic = '\u0633\u0641\u0631'; img = gen.generate_image(test_arabic); img.save('test_arabic_output.png'); print('Test image saved')" >> "%LOG_FILE%" 2>&1
 if errorlevel 1 (
     echo [WARNING] Dataset generator test failed
     echo [WARNING] Dataset generator test failed >> "%LOG_FILE%"
