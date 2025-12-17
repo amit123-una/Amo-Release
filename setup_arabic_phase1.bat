@@ -32,9 +32,61 @@ echo Log file: %LOG_FILE%
 echo.
 
 REM ============================================================================
+REM Step 0: Activate Conda Environment
+REM ============================================================================
+echo [STEP 0/6] Activating conda environment 'amo'...
+echo [STEP 0/6] Activating conda environment 'amo'... >> "%LOG_FILE%"
+
+REM Check if conda is available
+where conda >nul 2>&1
+if errorlevel 1 (
+    echo [WARNING] Conda not found in PATH, trying to initialize...
+    echo [WARNING] Conda not found in PATH, trying to initialize... >> "%LOG_FILE%"
+    
+    REM Try common conda installation paths
+    if exist "%USERPROFILE%\anaconda3\Scripts\conda.exe" (
+        set "CONDA_BASE=%USERPROFILE%\anaconda3"
+        call "%CONDA_BASE%\Scripts\activate.bat" %CONDA_BASE%
+    ) else if exist "%LOCALAPPDATA%\anaconda3\Scripts\conda.exe" (
+        set "CONDA_BASE=%LOCALAPPDATA%\anaconda3"
+        call "%CONDA_BASE%\Scripts\activate.bat" %CONDA_BASE%
+    ) else if exist "%USERPROFILE%\miniconda3\Scripts\conda.exe" (
+        set "CONDA_BASE=%USERPROFILE%\miniconda3"
+        call "%CONDA_BASE%\Scripts\activate.bat" %CONDA_BASE%
+    ) else if exist "%LOCALAPPDATA%\miniconda3\Scripts\conda.exe" (
+        set "CONDA_BASE=%LOCALAPPDATA%\miniconda3"
+        call "%CONDA_BASE%\Scripts\activate.bat" %CONDA_BASE%
+    ) else (
+        echo [ERROR] Conda not found. Please ensure conda is installed and in PATH.
+        echo [ERROR] Conda not found. Please ensure conda is installed and in PATH. >> "%LOG_FILE%"
+        echo [ERROR] Or manually activate 'amo' environment before running this script.
+        echo [ERROR] Or manually activate 'amo' environment before running this script. >> "%LOG_FILE%"
+        set /a ERROR_COUNT+=1
+        goto :error_exit
+    )
+)
+
+REM Activate conda environment 'amo'
+call conda activate amo >> "%LOG_FILE%" 2>&1
+if errorlevel 1 (
+    echo [ERROR] Failed to activate conda environment 'amo'!
+    echo [ERROR] Failed to activate conda environment 'amo'! >> "%LOG_FILE%"
+    echo [ERROR] Please ensure the 'amo' environment exists: conda env list
+    echo [ERROR] Please ensure the 'amo' environment exists: conda env list >> "%LOG_FILE%"
+    set /a ERROR_COUNT+=1
+    goto :error_exit
+) else (
+    echo [SUCCESS] Conda environment 'amo' activated
+    echo [SUCCESS] Conda environment 'amo' activated >> "%LOG_FILE%"
+    REM Verify activation by checking Python path
+    python -c "import sys; print('Python:', sys.executable)" >> "%LOG_FILE%" 2>&1
+)
+echo.
+
+REM ============================================================================
 REM Step 1: Check Python Installation
 REM ============================================================================
-echo [STEP 1/5] Checking Python installation...
+echo [STEP 1/6] Checking Python installation...
 echo [STEP 1/5] Checking Python installation... >> "%LOG_FILE%"
 
 python --version >nul 2>&1
@@ -54,8 +106,8 @@ echo.
 REM ============================================================================
 REM Step 2: Install Dependencies
 REM ============================================================================
-echo [STEP 2/5] Installing Python dependencies...
-echo [STEP 2/5] Installing Python dependencies... >> "%LOG_FILE%"
+echo [STEP 2/6] Installing Python dependencies...
+echo [STEP 2/6] Installing Python dependencies... >> "%LOG_FILE%"
 
 python -m pip install --upgrade pip >> "%LOG_FILE%" 2>&1
 if errorlevel 1 (
@@ -78,8 +130,8 @@ echo.
 REM ============================================================================
 REM Step 3: Validate Vocabulary File
 REM ============================================================================
-echo [STEP 3/5] Validating vocabulary file...
-echo [STEP 3/5] Validating vocabulary file... >> "%LOG_FILE%"
+echo [STEP 3/6] Validating vocabulary file...
+echo [STEP 3/6] Validating vocabulary file... >> "%LOG_FILE%"
 
 if not exist "%VOCABULARY_FILE%" (
     echo [ERROR] Vocabulary file not found: %VOCABULARY_FILE%
@@ -105,8 +157,8 @@ echo.
 REM ============================================================================
 REM Step 4: Test Arabic Detection Module
 REM ============================================================================
-echo [STEP 4/5] Testing Arabic detection module...
-echo [STEP 4/5] Testing Arabic detection module... >> "%LOG_FILE%"
+echo [STEP 4/6] Testing Arabic detection module...
+echo [STEP 4/6] Testing Arabic detection module... >> "%LOG_FILE%"
 
 python -c "from arabic_text_utils import contains_arabic, extract_arabic_text; print('Test 1:', contains_arabic('سفر')); print('Test 2:', extract_arabic_text('Hello سفر world'))" >> "%LOG_FILE%" 2>&1
 if errorlevel 1 (
@@ -123,8 +175,8 @@ echo.
 REM ============================================================================
 REM Step 5: Generate Synthetic Dataset
 REM ============================================================================
-echo [STEP 5/5] Generating synthetic dataset...
-echo [STEP 5/5] Generating synthetic dataset... >> "%LOG_FILE%"
+echo [STEP 5/6] Generating synthetic dataset...
+echo [STEP 5/6] Generating synthetic dataset... >> "%LOG_FILE%"
 echo This may take 5-15 minutes depending on your system...
 echo.
 

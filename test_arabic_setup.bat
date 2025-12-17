@@ -23,6 +23,51 @@ echo Started: %date% %time% >> "%TEST_LOG%"
 echo ============================================================================ >> "%TEST_LOG%"
 echo.
 
+REM Step 0: Activate Conda Environment
+echo [STEP 0] Activating conda environment 'amo'...
+echo [STEP 0] Activating conda environment 'amo'... >> "%TEST_LOG%"
+
+REM Check if conda is available
+where conda >nul 2>&1
+if errorlevel 1 (
+    echo [WARNING] Conda not found in PATH, trying to initialize...
+    echo [WARNING] Conda not found in PATH, trying to initialize... >> "%TEST_LOG%"
+    
+    REM Try common conda installation paths
+    if exist "%USERPROFILE%\anaconda3\Scripts\conda.exe" (
+        set "CONDA_BASE=%USERPROFILE%\anaconda3"
+        call "%CONDA_BASE%\Scripts\activate.bat" %CONDA_BASE%
+    ) else if exist "%LOCALAPPDATA%\anaconda3\Scripts\conda.exe" (
+        set "CONDA_BASE=%LOCALAPPDATA%\anaconda3"
+        call "%CONDA_BASE%\Scripts\activate.bat" %CONDA_BASE%
+    ) else if exist "%USERPROFILE%\miniconda3\Scripts\conda.exe" (
+        set "CONDA_BASE=%USERPROFILE%\miniconda3"
+        call "%CONDA_BASE%\Scripts\activate.bat" %CONDA_BASE%
+    ) else if exist "%LOCALAPPDATA%\miniconda3\Scripts\conda.exe" (
+        set "CONDA_BASE=%LOCALAPPDATA%\miniconda3"
+        call "%CONDA_BASE%\Scripts\activate.bat" %CONDA_BASE%
+    ) else (
+        echo [FAIL] Conda not found. Please ensure conda is installed and in PATH.
+        echo [FAIL] Conda not found. Please ensure conda is installed and in PATH. >> "%TEST_LOG%"
+        set /a FAILED+=1
+        goto :test_summary
+    )
+)
+
+REM Activate conda environment 'amo'
+call conda activate amo >> "%TEST_LOG%" 2>&1
+if errorlevel 1 (
+    echo [FAIL] Failed to activate conda environment 'amo'!
+    echo [FAIL] Failed to activate conda environment 'amo'! >> "%TEST_LOG%"
+    set /a FAILED+=1
+    goto :test_summary
+) else (
+    echo [PASS] Conda environment 'amo' activated
+    echo [PASS] Conda environment 'amo' activated >> "%TEST_LOG%"
+    set /a PASSED+=1
+)
+echo.
+
 REM Test 1: Python Installation
 echo [TEST 1] Python installation...
 python --version >nul 2>&1
@@ -149,6 +194,7 @@ echo Tests failed: !FAILED! >> "%TEST_LOG%"
 echo Finished: %date% %time% >> "%TEST_LOG%"
 echo ============================================================================ >> "%TEST_LOG%"
 
+:test_summary
 if !FAILED! EQU 0 (
     echo [SUCCESS] All tests passed!
     echo.

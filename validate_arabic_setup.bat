@@ -23,6 +23,46 @@ echo Started: %date% %time% >> "%VALIDATION_LOG%"
 echo ============================================================================ >> "%VALIDATION_LOG%"
 echo.
 
+REM Step 0: Activate Conda Environment
+echo [STEP 0] Activating conda environment 'amo'...
+echo [STEP 0] Activating conda environment 'amo'... >> "%VALIDATION_LOG%"
+
+REM Check if conda is available
+where conda >nul 2>&1
+if errorlevel 1 (
+    echo [WARNING] Conda not found in PATH, trying to initialize...
+    echo [WARNING] Conda not found in PATH, trying to initialize... >> "%VALIDATION_LOG%"
+    
+    REM Try common conda installation paths
+    if exist "%USERPROFILE%\anaconda3\Scripts\conda.exe" (
+        set "CONDA_BASE=%USERPROFILE%\anaconda3"
+        call "%CONDA_BASE%\Scripts\activate.bat" %CONDA_BASE%
+    ) else if exist "%LOCALAPPDATA%\anaconda3\Scripts\conda.exe" (
+        set "CONDA_BASE=%LOCALAPPDATA%\anaconda3"
+        call "%CONDA_BASE%\Scripts\activate.bat" %CONDA_BASE%
+    ) else if exist "%USERPROFILE%\miniconda3\Scripts\conda.exe" (
+        set "CONDA_BASE=%USERPROFILE%\miniconda3"
+        call "%CONDA_BASE%\Scripts\activate.bat" %CONDA_BASE%
+    ) else if exist "%LOCALAPPDATA%\miniconda3\Scripts\conda.exe" (
+        set "CONDA_BASE=%LOCALAPPDATA%\miniconda3"
+        call "%CONDA_BASE%\Scripts\activate.bat" %CONDA_BASE%
+    ) else (
+        echo [WARN] Conda not found. Continuing without conda activation...
+        echo [WARN] Conda not found. Continuing without conda activation... >> "%VALIDATION_LOG%"
+    )
+) else (
+    REM Activate conda environment 'amo'
+    call conda activate amo >> "%VALIDATION_LOG%" 2>&1
+    if errorlevel 1 (
+        echo [WARN] Failed to activate conda environment 'amo', continuing...
+        echo [WARN] Failed to activate conda environment 'amo', continuing... >> "%VALIDATION_LOG%"
+    ) else (
+        echo [PASS] Conda environment 'amo' activated
+        echo [PASS] Conda environment 'amo' activated >> "%VALIDATION_LOG%"
+    )
+)
+echo.
+
 REM Check 1: Dataset Directory
 echo [CHECK 1] Dataset directory...
 if exist "%DATASET_DIR%" (
