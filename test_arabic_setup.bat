@@ -85,10 +85,11 @@ echo.
 
 REM Test 2: Required Modules
 echo [TEST 2] Required Python modules...
-python -c "import arabic_reshaper; import bidi; from PIL import Image; print('OK')" >nul 2>&1
+python -c "import arabic_reshaper; from bidi.algorithm import get_display; from PIL import Image; print('OK')" >nul 2>&1
 if errorlevel 1 (
     echo [FAIL] Required modules missing (arabic_reshaper, python-bidi, Pillow)
     echo [FAIL] Required modules missing >> "%TEST_LOG%"
+    echo   Try: pip install arabic-reshaper python-bidi Pillow >> "%TEST_LOG%"
     set /a FAILED+=1
 ) else (
     echo [PASS] Required modules installed
@@ -99,10 +100,11 @@ echo.
 
 REM Test 3: Arabic Text Utils
 echo [TEST 3] Arabic text utilities...
-python -c "from arabic_text_utils import contains_arabic, extract_arabic_text; assert contains_arabic('سفر') == True; assert extract_arabic_text('Hello سفر world') == 'سفر'; print('OK')" >nul 2>&1
+python -c "from arabic_text_utils import contains_arabic, extract_arabic_text; result1 = contains_arabic('سفر'); result2 = extract_arabic_text('Hello سفر world'); assert result1 == True, f'contains_arabic failed: {result1}'; assert result2 == 'سفر', f'extract_arabic_text failed: got {result2}'; print('OK')" >> "%TEST_LOG%" 2>&1
 if errorlevel 1 (
     echo [FAIL] Arabic text utilities test failed
     echo [FAIL] Arabic text utilities test failed >> "%TEST_LOG%"
+    echo   Check log file for details >> "%TEST_LOG%"
     set /a FAILED+=1
 ) else (
     echo [PASS] Arabic text utilities working
@@ -170,10 +172,11 @@ echo.
 
 REM Test 7: ControlNet Module (if available)
 echo [TEST 7] ControlNet module...
-python -c "from arabic_controlnet import ArabicControlNetRenderer; print('OK')" >nul 2>&1
+python -c "from arabic_controlnet import ArabicControlNetRenderer; print('OK')" >> "%TEST_LOG%" 2>&1
 if errorlevel 1 (
-    echo [WARN] ControlNet module test failed (expected if dependencies missing)
-    echo [WARN] ControlNet module test failed >> "%TEST_LOG%"
+    echo [WARN] ControlNet module test failed (expected if diffusers/torch not installed)
+    echo [WARN] ControlNet module test failed (expected if diffusers/torch not installed) >> "%TEST_LOG%"
+    echo   This is optional for Phase-1 setup >> "%TEST_LOG%"
 ) else (
     echo [PASS] ControlNet module available
     echo [PASS] ControlNet module available >> "%TEST_LOG%"
@@ -182,6 +185,8 @@ if errorlevel 1 (
 echo.
 
 REM Summary
+:test_summary
+echo.
 echo ============================================================================
 echo Test Summary
 echo ============================================================================
@@ -194,7 +199,6 @@ echo Tests failed: !FAILED! >> "%TEST_LOG%"
 echo Finished: %date% %time% >> "%TEST_LOG%"
 echo ============================================================================ >> "%TEST_LOG%"
 
-:test_summary
 if !FAILED! EQU 0 (
     echo [SUCCESS] All tests passed!
     echo.
@@ -202,8 +206,12 @@ if !FAILED! EQU 0 (
 ) else (
     echo [WARNING] Some tests failed. Please check the log: %TEST_LOG%
     echo.
-    echo Install missing dependencies:
-    echo   pip install -r requirements.txt
+    echo Common fixes:
+    echo   1. Install missing dependencies: pip install -r requirements.txt
+    echo   2. Ensure you're in the 'amo' conda environment
+    echo   3. Check the log file for specific error messages
+    echo.
+    echo Note: ControlNet test failure is expected if diffusers/torch not installed
 )
 
 echo.
