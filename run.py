@@ -5,21 +5,204 @@ import numpy as np
 
 from diffusers import StableDiffusion3Pipeline, FluxPipeline, AuraFlowPipeline
 from diffusers import StochasticRFOvershotDiscreteScheduler
-# from pipelines import FluxPipeline
+
+from arabic_text_utils import (
+    contains_arabic,
+    extract_arabic_text,
+    prepare_arabic_for_rendering,
+    build_arabic_output_path,
+    log as arabic_log,
+)
+
+# Phase-1 Arabic ControlNet rendering (runs after existing Arabic post-processing)
+try:
+    from arabic_controlnet import ArabicControlNetRenderer, create_control_image_from_text
+    from arabic_ocr_validator import ArabicOCRValidator
+    PHASE1_ARABIC_AVAILABLE = True
+except ImportError:
+    PHASE1_ARABIC_AVAILABLE = False
+
+
+def _maybe_generate_arabic_only_image(
+    pipe,
+    original_prompt: str,
+    guidance_scale: float,
+    num_inference_steps: int,
+    img_size: int,
+    generator: torch.Generator,
+    use_att: bool,
+    original_img_path: str,
+) -> None:
+    """
+    Optional post-processing step for prompts containing Arabic text.
+
+    This runs strictly AFTER the original image is generated and saved, and it:
+    - Detects Arabic in the prompt using Unicode ranges.
+    - Extracts the exact Arabic text (no translation, no rewriting).
+    - Prepares the text for visual rendering (reshaping + bidi).
+    - Generates a second image focused solely on rendering that Arabic text.
+
+    The original diffusion call and output path remain unchanged.
+    """
+    try:
+        if not contains_arabic(original_prompt):
+            return
+
+        arabic_log(print, "Detected Arabic text in prompt, preparing Arabic-only image...")
+
+        extracted = extract_arabic_text(original_prompt)
+        if not extracted:
+            arabic_log(print, "Arabic detection found script, but no stable substring to extract.")
+            return
+
+        arabic_log(print, f"Detected Arabic text: {extracted}")
+
+        prepared_text = prepare_arabic_for_rendering(extracted)
+        arabic_log(print, "Prepared Arabic text for rendering")
+
+        # Build a controlled prompt that explicitly asks for clean Arabic text.
+        arabic_prompt = (
+            "A clean image that displays the exact Arabic text: "
+            f"{prepared_text}, rendered clearly, legibly, centered, "
+            "with no distortion and no extra characters."
+        )
+
+        arabic_log(print, "Generating Arabic-only image")
+
+        output = pipe(
+            prompt=arabic_prompt,
+            num_inference_steps=num_inference_steps,
+            height=img_size,
+            width=img_size,
+            guidance_scale=guidance_scale,
+            generator=generator,
+            use_att=use_att,
+        )
+
+        arabic_image = output.images[0]
+        arabic_img_path = build_arabic_output_path(original_img_path)
+        arabic_image.save(arabic_img_path)
+
+        arabic_log(print, f"Saved Arabic image to {arabic_img_path}")
+        
+        # Phase-1 Arabic ControlNet rendering (runs after existing Arabic post-processing)
+        # This uses a trained ControlNet to generate more accurate Arabic text rendering
+        _maybe_render_with_phase1_controlnet(
+            extracted_arabic=extracted,
+            prepared_text=prepared_text,
+            original_img_path=arabic_img_path,  # Use the Arabic image path, not original
+            guidance_scale=guidance_scale,
+            num_inference_steps=num_inference_steps,
+            img_size=img_size,
+            generator=generator,
+        )
+
+    except Exception as exc:
+        # Any failure in Arabic-specific logic must NEVER break the main pipeline.
+        arabic_log(print, f"Arabic post-processing failed, skipping Arabic-only image. Error: {exc}")
+
+
+def _maybe_render_with_phase1_controlnet(
+    extracted_arabic: str,
+    prepared_text: str,
+    original_img_path: str,
+    guidance_scale: float,
+    num_inference_steps: int,
+    img_size: int,
+    generator: torch.Generator,
+) -> None:
+    """
+    Phase-1 Arabic ControlNet rendering (optional, runs after existing Arabic post-processing).
+    
+    This function:
+    - Checks if Phase-1 Arabic ControlNet is available and trained
+    - Creates a control image from the Arabic text
+    - Uses ControlNet to generate a more accurate Arabic text image
+    - Validates output with OCR
+    - Saves validated image
+    
+    This is a NEW capability that runs AFTER the existing Arabic post-processing,
+    so existing functionality is never affected.
+    """
+    if not PHASE1_ARABIC_AVAILABLE:
+        return  # Phase-1 not available, skip silently
+    
+    try:
+        # Check if ControlNet model exists
+        controlnet_path = os.getenv("ARABIC_CONTROLNET_PATH", "arabic_controlnet_checkpoint")
+        if not os.path.exists(controlnet_path):
+            # ControlNet not trained yet, skip Phase-1 rendering
+            return
+        
+        arabic_log(print, "Phase-1 Arabic ControlNet detected, generating enhanced Arabic image...")
+        
+        # Initialize renderer (lazy load to avoid breaking if dependencies missing)
+        renderer = ArabicControlNetRenderer(
+            controlnet_path=controlnet_path,
+            device="cuda" if torch.cuda.is_available() else "cpu",
+        )
+        
+        # Create control image from Arabic text
+        control_image = create_control_image_from_text(
+            prepared_text,
+            image_size=(img_size, img_size),
+            font_size=min(64, img_size // 8),
+        )
+        
+        # Generate image with ControlNet
+        arabic_log(print, "Generating Phase-1 Arabic image with ControlNet...")
+        phase1_image = renderer.render(
+            arabic_text=extracted_arabic,
+            control_image=control_image,
+            num_inference_steps=num_inference_steps,
+            guidance_scale=guidance_scale,
+            generator=generator,
+        )
+        
+        # Validate with OCR
+        arabic_log(print, "Validating Phase-1 Arabic image with OCR...")
+        validator = ArabicOCRValidator()
+        is_valid, extracted_text, similarity = validator.validate(
+            phase1_image,
+            extracted_arabic,
+            tolerance=0.9,
+        )
+        
+        if is_valid:
+            # Save validated image
+            phase1_path = original_img_path.replace(".png", "_phase1_arabic.png")
+            phase1_image.save(phase1_path)
+            arabic_log(print, f"Phase-1 Arabic image validated (similarity: {similarity:.2f}) and saved to {phase1_path}")
+        else:
+            arabic_log(print, f"Phase-1 Arabic image failed OCR validation (similarity: {similarity:.2f}, extracted: {extracted_text})")
+            # Optionally save anyway for debugging
+            phase1_path = original_img_path.replace(".png", "_phase1_arabic_rejected.png")
+            phase1_image.save(phase1_path)
+            arabic_log(print, f"Rejected image saved to {phase1_path} for debugging")
+    
+    except Exception as exc:
+        # Phase-1 failures must NEVER break the main pipeline
+        arabic_log(print, f"Phase-1 Arabic ControlNet rendering failed, skipping. Error: {exc}")
 
 
 def run(args):
-    with open(args.prompt_file, 'r') as file:
+    with open(args.prompt_file, 'r', encoding='utf-8') as file:
         prompts = file.readlines()
     
     if args.model_type == "sd3":
-        pipe = StableDiffusion3Pipeline.from_pretrained("stabilityai/stable-diffusion-3-medium-diffusers", torch_dtype=torch.float32)
+        pipe = StableDiffusion3Pipeline.from_pretrained(
+            "stabilityai/stable-diffusion-3-medium-diffusers", torch_dtype=torch.float32
+        )
         guidance_scale = 7.0
     elif args.model_type == "flux":
-        pipe = FluxPipeline.from_pretrained("black-forest-labs/FLUX.1-dev", torch_dtype=torch.bfloat16)
+        pipe = FluxPipeline.from_pretrained(
+            "black-forest-labs/FLUX.1-dev", torch_dtype=torch.bfloat16
+        )
         guidance_scale = 3.5
     elif args.model_type == "auraflow": 
-        pipe = AuraFlowPipeline.from_pretrained("fal/AuraFlow", torch_dtype=torch.float16)
+        pipe = AuraFlowPipeline.from_pretrained(
+            "fal/AuraFlow", torch_dtype=torch.float16
+        )
         guidance_scale = 3.5
     pipe.enable_model_cpu_offload()
     
@@ -36,15 +219,21 @@ def run(args):
         exp_prefix = f"{args.scheduler}"
     
     for i in range(len(prompts)):
-        file_save_dir = os.path.join(args.exp_dir, "generated_image", f"num_steps={str(args.num_inference_steps).zfill(4)}", exp_prefix)
+        file_save_dir = os.path.join(
+            args.exp_dir,
+            "generated_image",
+            f"num_steps={str(args.num_inference_steps).zfill(4)}",
+            exp_prefix,
+        )
         os.makedirs(file_save_dir, exist_ok=True)
         img_save_path = os.path.join(file_save_dir, f"sample_{str(i).zfill(4)}.png")
         
         generator = torch.Generator(device='cuda')
         generator.manual_seed(args.seed)
         
+        prompt = prompts[i]
         output = pipe(
-            prompt=prompts[i],
+            prompt=prompt,
             num_inference_steps=args.num_inference_steps,
             height=args.img_size,
             width=args.img_size,
@@ -54,6 +243,18 @@ def run(args):
         )
         image = output.images[0]
         image.save(img_save_path)
+
+        # Arabic-specific post-processing: runs strictly after the original image is saved.
+        _maybe_generate_arabic_only_image(
+            pipe=pipe,
+            original_prompt=prompt,
+            guidance_scale=guidance_scale,
+            num_inference_steps=args.num_inference_steps,
+            img_size=args.img_size,
+            generator=generator,
+            use_att=args.use_att,
+            original_img_path=img_save_path,
+        )
 
 
 if __name__ == "__main__":

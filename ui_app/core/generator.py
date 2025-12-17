@@ -51,7 +51,7 @@ class ImageGenerator(QObject):
                  conda_exe: Optional[str] = None):
         """
         Generate images using the exact logic from run.py.
-        
+
         Args match the original argparse arguments exactly.
         conda_exe: Path to conda.exe if conda environment should be used
         """
@@ -71,6 +71,15 @@ class ImageGenerator(QObject):
             import torch
             from diffusers import StableDiffusion3Pipeline, FluxPipeline, AuraFlowPipeline
             from diffusers import StochasticRFOvershotDiscreteScheduler
+
+            # Arabic utilities are kept separate from the core diffusion logic.
+            # They only add a post-processing step for prompts that contain Arabic text.
+            from arabic_text_utils import (
+                contains_arabic,
+                extract_arabic_text,
+                prepare_arabic_for_rendering,
+                build_arabic_output_path,
+            )
             
             # Step 1: Read prompts
             self.log_message.emit(f"Reading prompts from: {prompt_file}", "info")
@@ -178,10 +187,60 @@ class ImageGenerator(QObject):
                     
                     image = output.images[0]
                     image.save(img_save_path)
-                    
+
                     self.log_message.emit(f"Image saved: {img_save_path}", "info")
                     self.image_generated.emit(img_save_path, prompt)
                     generated_images.append(img_save_path)
+
+                    # Arabic-specific post-processing: runs strictly after the original image is saved.
+                    try:
+                        if contains_arabic(prompt):
+                            self.log_message.emit(
+                                "Detected Arabic text in prompt, preparing Arabic-only image...", "step"
+                            )
+
+                            extracted = extract_arabic_text(prompt)
+                            if not extracted:
+                                self.log_message.emit(
+                                    "Arabic detection found script, but no stable substring to extract.", "warning"
+                                )
+                            else:
+                                self.log_message.emit(f"Detected Arabic text: {extracted}", "info")
+
+                                prepared_text = prepare_arabic_for_rendering(extracted)
+                                self.log_message.emit("Prepared Arabic text for rendering", "info")
+
+                                arabic_prompt = (
+                                    "A clean image that displays the exact Arabic text: "
+                                    f"{prepared_text}, rendered clearly, legibly, centered, "
+                                    "with no distortion and no extra characters."
+                                )
+
+                                self.log_message.emit("Generating Arabic-only image", "step")
+
+                                arabic_output = self.pipe(
+                                    prompt=arabic_prompt,
+                                    num_inference_steps=num_inference_steps,
+                                    height=img_size,
+                                    width=img_size,
+                                    guidance_scale=guidance_scale,
+                                    generator=generator,
+                                    use_att=use_att,
+                                )
+
+                                arabic_image = arabic_output.images[0]
+                                arabic_img_path = build_arabic_output_path(img_save_path)
+                                arabic_image.save(arabic_img_path)
+
+                                self.log_message.emit(f"Saved Arabic image to {arabic_img_path}", "info")
+                                # Also emit this as a generated image so it appears in the UI list.
+                                self.image_generated.emit(arabic_img_path, prompt)
+                    except Exception as arabic_exc:
+                        # Arabic processing must never break the main generation path.
+                        self.log_message.emit(
+                            f"Arabic post-processing failed, skipping Arabic-only image. Error: {arabic_exc}",
+                            "warning",
+                        )
                     
                 except Exception as e:
                     error_msg = f"Error generating image {i+1}: {str(e)}"

@@ -16,3 +16,11 @@ protobuf==5.29.3
 
 # UI dependencies
 PyQt5>=5.15.0
+
+# Arabic text handling for post-processing
+arabic-reshaper>=3.0.0
+python-bidi>=0.4.2
+
+# Phase-1 Arabic Text Rendering (optional)
+Pillow>=10.0.0  # For synthetic dataset generation
+pytesseract>=0.3.10  # For OCR validation (requires Tesseract OCR installed separately)
