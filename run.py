@@ -56,18 +56,54 @@ def _maybe_generate_arabic_only_image(
             return
 
         arabic_log(print, f"Detected Arabic text: {extracted}")
+        arabic_log(print, f"Extracted text (repr): {repr(extracted)}")
+        arabic_log(print, f"Extracted text (hex): {extracted.encode('utf-8').hex()}")
 
         prepared_text = prepare_arabic_for_rendering(extracted)
-        arabic_log(print, "Prepared Arabic text for rendering")
+        arabic_log(print, f"Prepared Arabic text: {prepared_text}")
+        arabic_log(print, f"Prepared text (repr): {repr(prepared_text)}")
+
+        # WORKAROUND: Create a reference image showing what text was extracted
+        # This helps verify that extraction is working correctly
+        try:
+            from arabic_dataset import ArabicDatasetGenerator
+            temp_generator = ArabicDatasetGenerator(image_size=(img_size, img_size))
+            reference_image = temp_generator.generate_image(
+                extracted,
+                font_size=min(128, img_size // 8),
+                text_color=(0, 0, 0),
+                bg_color=(255, 255, 255),
+            )
+            # Save reference image for verification
+            ref_img_path = original_img_path.replace(".png", "_reference_arabic.png")
+            reference_image.save(ref_img_path)
+            arabic_log(print, f"Saved reference image showing extracted text: {ref_img_path}")
+            arabic_log(print, "Created reference image with rendered Arabic text")
+        except Exception as ref_exc:
+            arabic_log(print, f"Could not create reference image: {ref_exc}")
+            reference_image = None
 
         # Build a controlled prompt that explicitly asks for clean Arabic text.
+        # IMPORTANT: The diffusion model's text encoder doesn't understand Arabic,
+        # so it will hallucinate Arabic words. This is why we need Phase-1 ControlNet.
+        # The model may generate random Arabic words like "خَمْرَة" (wine) instead of the actual text.
         arabic_prompt = (
             "A clean image that displays the exact Arabic text: "
             f"{prepared_text}, rendered clearly, legibly, centered, "
             "with no distortion and no extra characters."
         )
 
+        arabic_log(print, f"Full prompt being sent to model: {arabic_prompt}")
+        arabic_log(print, f"Prompt length: {len(arabic_prompt)} characters")
+        arabic_log(print, "WARNING: Model may hallucinate Arabic text - this is expected without Phase-1 ControlNet")
         arabic_log(print, "Generating Arabic-only image")
+
+        # Use a different seed for Arabic generation to avoid same-word bias
+        import random
+        arabic_seed = generator.initial_seed() + 1000 if hasattr(generator, 'initial_seed') else random.randint(1000, 9999)
+        arabic_generator = torch.Generator(device=generator.device if hasattr(generator, 'device') else 'cuda')
+        arabic_generator.manual_seed(arabic_seed)
+        arabic_log(print, f"Using seed {arabic_seed} for Arabic generation (original seed + 1000)")
 
         output = pipe(
             prompt=arabic_prompt,
@@ -75,7 +111,7 @@ def _maybe_generate_arabic_only_image(
             height=img_size,
             width=img_size,
             guidance_scale=guidance_scale,
-            generator=generator,
+            generator=arabic_generator,
             use_att=use_att,
         )
 
