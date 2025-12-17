@@ -110,12 +110,15 @@ if exist "%DATASET_DIR%\images" (
     for /f %%i in ('dir /b "%DATASET_DIR%\images\*.png" 2^>nul ^| find /c /v ""') do set IMAGE_COUNT=%%i
     
     if defined IMAGE_COUNT (
-        if !IMAGE_COUNT! GEQ 10 (
+        if !IMAGE_COUNT! GEQ 100 (
+            echo [PASS] Found !IMAGE_COUNT! images (excellent - 100+ images)
+            echo [PASS] Found !IMAGE_COUNT! images (excellent - 100+ images) >> "%VALIDATION_LOG%"
+        ) else if !IMAGE_COUNT! GEQ 10 (
             echo [PASS] Found !IMAGE_COUNT! images (minimum: 10)
             echo [PASS] Found !IMAGE_COUNT! images (minimum: 10) >> "%VALIDATION_LOG%"
         ) else (
-            echo [WARN] Only !IMAGE_COUNT! images found (expected more)
-            echo [WARN] Only !IMAGE_COUNT! images found (expected more) >> "%VALIDATION_LOG%"
+            echo [WARN] Only !IMAGE_COUNT! images found (expected at least 10)
+            echo [WARN] Only !IMAGE_COUNT! images found (expected at least 10) >> "%VALIDATION_LOG%"
         )
     ) else (
         echo [FAIL] No images found in dataset
@@ -132,14 +135,15 @@ echo.
 REM Check 5: Sample Image Validation
 echo [CHECK 5] Sample image validation...
 if exist "%DATASET_DIR%\images" (
+    set SAMPLE_IMAGE=
     for %%f in ("%DATASET_DIR%\images\*.png") do (
-        set SAMPLE_IMAGE=%%f
+        set "SAMPLE_IMAGE=%%f"
         goto :found_sample
     )
     
     :found_sample
     if defined SAMPLE_IMAGE (
-        python -c "from PIL import Image; img = Image.open('!SAMPLE_IMAGE!'); print('Size:', img.size, 'Mode:', img.mode)" >nul 2>&1
+        python -c "from PIL import Image; img = Image.open(r'!SAMPLE_IMAGE!'); print('Size:', img.size, 'Mode:', img.mode)" >nul 2>&1
         if errorlevel 1 (
             echo [WARN] Could not validate sample image format
             echo [WARN] Could not validate sample image format >> "%VALIDATION_LOG%"
