@@ -233,3 +233,4 @@ setup_arabic_phase1.bat
 - `ARABIC_PHASE1_README.md` - Detailed documentation
 - `arabic_vocabulary_sample.txt` - Sample vocabulary (100 words)
 - `requirements.txt` - Python dependencies
+

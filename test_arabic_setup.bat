@@ -217,3 +217,4 @@ if !FAILED! EQU 0 (
 echo.
 echo Test log saved to: %TEST_LOG%
 pause
+

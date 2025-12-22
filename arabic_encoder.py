@@ -108,3 +108,4 @@ def create_encoder() -> Optional[ArabicGlyphEncoder]:
         return ArabicGlyphEncoder()
     except ImportError:
         return None
+

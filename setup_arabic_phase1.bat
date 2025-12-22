@@ -296,3 +296,4 @@ echo Please check the log file for details: %LOG_FILE%
 echo.
 pause
 exit /b !ERROR_COUNT!
+

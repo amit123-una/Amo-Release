@@ -58,3 +58,4 @@ if __name__ == "__main__":
     print("\nIf the model is generating 'wine' instead of 'travel',")
     print("this is because the diffusion model doesn't understand Arabic.")
     print("This is why Phase-1 ControlNet training is needed.")
+

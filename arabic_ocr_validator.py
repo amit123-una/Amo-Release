@@ -182,3 +182,4 @@ def validate_arabic_image(
     validator = ArabicOCRValidator()
     image = Image.open(image_path)
     return validator.validate(image, expected_text, tolerance)
+

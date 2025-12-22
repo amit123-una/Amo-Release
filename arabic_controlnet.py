@@ -201,3 +201,4 @@ def train_arabic_controlnet(
         "Full training implementation requires integration with "
         "diffusers training utilities. See diffusers-amo/examples/controlnet/train_controlnet.py"
     )
+

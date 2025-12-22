@@ -325,3 +325,4 @@ def generate_phase1_dataset(
     generator = ArabicDatasetGenerator(output_dir=output_dir)
     dataset = generator.generate_dataset(vocabulary, images_per_word=images_per_word)
     return str(generator.output_dir)
+

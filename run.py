@@ -1,5 +1,209 @@
 import argparse
 import os
+from typing import Optional
+
+import torch
+import numpy as np
+
+from diffusers import StableDiffusion3Pipeline, FluxPipeline, AuraFlowPipeline
+from diffusers import StochasticRFOvershotDiscreteScheduler
+
+from utils.prompt_parser import parse_prompt
+from utils.text_renderer import render_text_to_image, TextRenderConfig
+from utils.image_composer import overlay_text_on_scene
+
+
+def log(msg: str) -> None:
+    """Simple, safe logger."""
+    try:
+        print(msg)
+    except Exception:
+        pass
+
+
+def run(args) -> None:
+    """
+    Main entry point for image generation.
+
+    Scene generation:
+        - Uses existing AMO pipeline (Flux / SD3 / AuraFlow).
+        - Uses ONLY the cleaned prompt (without quoted text).
+
+    Text rendering:
+        - Extracts quoted text from the prompt.
+        - Renders text deterministically with Pillow (Arabic or English).
+        - Overlays rendered text onto the generated scene.
+    """
+    with open(args.prompt_file, "r", encoding="utf-8") as file:
+        prompts = file.readlines()
+
+    # --- Pipeline selection (unchanged scene generation logic) ---
+    if args.model_type == "sd3":
+        pipe = StableDiffusion3Pipeline.from_pretrained(
+            "stabilityai/stable-diffusion-3-medium-diffusers", torch_dtype=torch.float32
+        )
+        guidance_scale = 7.0
+    elif args.model_type == "flux":
+        pipe = FluxPipeline.from_pretrained(
+            "black-forest-labs/FLUX.1-dev", torch_dtype=torch.bfloat16
+        )
+        guidance_scale = 3.5
+    elif args.model_type == "auraflow":
+        pipe = AuraFlowPipeline.from_pretrained(
+            "fal/AuraFlow", torch_dtype=torch.float16
+        )
+        guidance_scale = 3.5
+    else:
+        raise ValueError(f"Unsupported model_type: {args.model_type}")
+
+    pipe.enable_model_cpu_offload()
+
+    # --- Scheduler selection (unchanged) ---
+    if args.scheduler == "overshoot":
+        scheduler_config = pipe.scheduler.config
+        scheduler = StochasticRFOvershotDiscreteScheduler.from_config(scheduler_config)
+        overshot_func = lambda t, dt: t + dt
+        exp_prefix = f"{args.scheduler}_c={str(args.c).zfill(4)}_use_att={args.use_att}"
+
+        pipe.scheduler = scheduler
+        pipe.scheduler.set_c(args.c)
+        pipe.scheduler.set_overshot_func(overshot_func)
+    elif args.scheduler == "euler":
+        exp_prefix = f"{args.scheduler}"
+    else:
+        raise ValueError(f"Unknown scheduler: {args.scheduler}")
+
+    # --- Per-prompt generation ---
+    for i, raw_prompt_line in enumerate(prompts):
+        raw_prompt = raw_prompt_line.strip()
+
+        file_save_dir = os.path.join(
+            args.exp_dir,
+            "generated_image",
+            f"num_steps={str(args.num_inference_steps).zfill(4)}",
+            exp_prefix,
+        )
+        os.makedirs(file_save_dir, exist_ok=True)
+        img_save_path = os.path.join(file_save_dir, f"sample_{str(i).zfill(4)}.png")
+
+        generator = torch.Generator(device="cuda" if torch.cuda.is_available() else "cpu")
+        generator.manual_seed(args.seed)
+
+        # 1) Parse prompt: separate scene description and text.
+        parsed = parse_prompt(raw_prompt)
+        clean_prompt = parsed.clean_prompt or raw_prompt
+
+        if parsed.text:
+            lang = parsed.language or "en"
+            log(f"[INFO] Text detected in prompt (language={lang}): {parsed.text}")
+            log(f"[INFO] Clean prompt for diffusion: {clean_prompt}")
+        else:
+            log("[INFO] No quoted text detected; using full prompt for diffusion.")
+            log(f"[INFO] Prompt: {clean_prompt}")
+
+        # 2) Generate scene image using ONLY the clean prompt.
+        output = pipe(
+            prompt=clean_prompt,
+            num_inference_steps=args.num_inference_steps,
+            height=args.img_size,
+            width=args.img_size,
+            guidance_scale=guidance_scale,
+            generator=generator,
+            use_att=args.use_att,
+        )
+        scene_image = output.images[0]
+
+        # 3) Deterministically render and overlay text, if any.
+        if parsed.text:
+            try:
+                render_cfg = TextRenderConfig(
+                    font_size=min(96, args.img_size // 12),
+                    color=(0, 0, 0, 255),
+                    padding=max(8, args.img_size // 64),
+                    max_width=int(args.img_size * 0.8),
+                )
+                text_img = render_text_to_image(parsed.text, parsed.language or "en", render_cfg)
+                log("[INFO] Rendering text using deterministic renderer")
+
+                composed = overlay_text_on_scene(
+                    scene_image,
+                    text_img,
+                    position="center",
+                    y_offset_fraction=0.2,  # Slightly above vertical centre (billboard-like)
+                )
+                composed.save(img_save_path)
+                log(f"[INFO] Final image with text saved at: {img_save_path}")
+            except Exception as exc:
+                log(f"[WARN] Text rendering/composition failed, saving scene only. Error: {exc}")
+                scene_image.save(img_save_path)
+        else:
+            # No text to overlay; save scene as-is.
+            scene_image.save(img_save_path)
+            log(f"[INFO] Scene image saved at: {img_save_path}")
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--scheduler",
+        type=str,
+        default="euler",
+        help="scheduler to use",
+    )
+    parser.add_argument(
+        "--c",
+        type=float,
+        default=2.0,
+        help="c value for overshooting scheduler",
+    )
+    parser.add_argument(
+        "--prompt_file",
+        type=str,
+        default="prompts.txt",
+        help="file with prompts",
+    )
+    parser.add_argument(
+        "--num_inference_steps",
+        type=int,
+        default=28,
+        help="number of steps",
+    )
+    parser.add_argument(
+        "--exp_dir",
+        type=str,
+        default="exps/flux",
+        help="experiment directory",
+    )
+    parser.add_argument(
+        "--model_type",
+        type=str,
+        default="flux",
+        choices=["sd3", "flux", "auraflow"],
+        help="model type",
+    )
+    parser.add_argument(
+        "--use_att",
+        action="store_true",
+        help="use attention",
+    )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=10,
+        help="seed",
+    )
+    parser.add_argument(
+        "--img_size",
+        type=int,
+        default=1024,
+        help="image size",
+    )
+    args = parser.parse_args()
+
+    run(args)
+
+import argparse
+import os
 import torch
 import numpy as np
 

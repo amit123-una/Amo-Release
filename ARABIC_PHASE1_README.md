@@ -205,3 +205,4 @@ After Phase-1 proves feasibility:
 - Improve OCR validation
 - Scale to higher resolutions
 - Add sentence layout support
+

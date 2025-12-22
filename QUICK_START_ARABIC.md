@@ -168,3 +168,4 @@ python -c "from arabic_text_utils import contains_arabic; print('Contains Arabic
 - ⚠️ Then Phase-1 rendering will work automatically
 
 The foundation is ready - you just need to complete the training step!
+
